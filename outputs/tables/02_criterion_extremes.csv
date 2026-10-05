@@ -1,0 +1,43 @@
+"Criterion","Position","Place","State","Score"
+"Education","Strongest",1,"Punjab",1
+"Education","Strongest",2,"Chandigarh",0.9562
+"Education","Strongest",3,"Himachal Pradesh",0.8348
+"Education","Weakest",1,"Meghalaya",0
+"Education","Weakest",2,"Bihar",0.121
+"Education","Weakest",3,"Mizoram",0.1561
+"Safety","Strongest",1,"Nagaland",1
+"Safety","Strongest",2,"Lakshadweep",0.9672
+"Safety","Strongest",3,"Dadra and Nagar Haveli and Daman and Diu",0.904
+"Safety","Weakest",1,"Haryana",0
+"Safety","Weakest",2,"Delhi",0.0158
+"Safety","Weakest",3,"Odisha",0.1631
+"Health","Strongest",1,"Lakshadweep",1
+"Health","Strongest",2,"Andhra Pradesh",0.9997
+"Health","Strongest",3,"Karnataka",0.9532
+"Health","Weakest",1,"Nagaland",0
+"Health","Weakest",2,"Bihar",0.2851
+"Health","Weakest",3,"Dadra and Nagar Haveli and Daman and Diu",0.3266
+"Housing","Strongest",1,"A&N Islands",1
+"Housing","Strongest",2,"Chandigarh",1
+"Housing","Strongest",3,"Delhi",1
+"Housing","Weakest",1,"Jharkhand",0
+"Housing","Weakest",2,"Nagaland",0.2325
+"Housing","Weakest",3,"Odisha",0.2468
+"Economy","Strongest",1,"Tripura",1
+"Economy","Strongest",2,"Manipur",0.9294
+"Economy","Strongest",3,"Delhi",0.8708
+"Economy","Weakest",1,"A&N Islands",0
+"Economy","Weakest",2,"Bihar",0.1167
+"Economy","Weakest",3,"Haryana",0.1604
+"Environment","Strongest",1,"Arunachal Pradesh",1
+"Environment","Strongest",2,"Ladakh",1
+"Environment","Strongest",3,"Kerala",0.9696
+"Environment","Weakest",1,"Uttar Pradesh",0
+"Environment","Weakest",2,"Delhi",0
+"Environment","Weakest",3,"Haryana",0.0099
+"Connectivity","Strongest",1,"Goa",1
+"Connectivity","Strongest",2,"Delhi",0.9945
+"Connectivity","Strongest",3,"Chandigarh",0.9195
+"Connectivity","Weakest",1,"Meghalaya",0
+"Connectivity","Weakest",2,"Ladakh",0.0276
+"Connectivity","Weakest",3,"Dadra and Nagar Haveli and Daman and Diu",0.0352

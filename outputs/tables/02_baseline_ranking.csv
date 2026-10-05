@@ -1,0 +1,37 @@
+"Baseline_Rank","State","Type","Baseline_Score_EqualWeights","Low_Confidence"
+1,"Chandigarh","UT",0.7694,1
+2,"Goa","State",0.7378,0
+3,"Himachal Pradesh","State",0.7328,0
+4,"Kerala","State",0.7145,0
+5,"Lakshadweep","UT",0.701,1
+6,"Punjab","State",0.6728,0
+7,"Ladakh","UT",0.6614,1
+8,"Karnataka","State",0.6545,0
+9,"Uttarakhand","State",0.6528,0
+10,"Delhi","UT",0.6429,0
+11,"Maharashtra","State",0.6324,0
+12,"Tamil Nadu","State",0.6285,0
+13,"Sikkim","State",0.6104,0
+14,"Gujarat","State",0.6103,0
+15,"Jammu and Kashmir","UT",0.5999,0
+16,"Puducherry","UT",0.5997,0
+17,"Manipur","State",0.5912,0
+18,"Andhra Pradesh","State",0.5764,0
+19,"A&N Islands","UT",0.5547,1
+20,"Tripura","State",0.5441,0
+21,"Mizoram","State",0.5413,0
+22,"Telangana","State",0.5247,0
+23,"Assam","State",0.5171,0
+24,"Rajasthan","State",0.5055,0
+25,"West Bengal","State",0.4922,0
+26,"Dadra and Nagar Haveli and Daman and Diu","UT",0.483,0
+27,"Haryana","State",0.456,0
+28,"Arunachal Pradesh","State",0.4397,0
+29,"Nagaland","State",0.415,0
+30,"Uttar Pradesh","State",0.4077,0
+31,"Madhya Pradesh","State",0.3927,0
+32,"Odisha","State",0.3923,0
+33,"Chhattisgarh","State",0.3886,0
+34,"Meghalaya","State",0.338,0
+35,"Jharkhand","State",0.3031,0
+36,"Bihar","State",0.2687,0
