@@ -1,19 +1,15 @@
-# City Livability Optimizer
+# Personalized State and UT Livability Recommendation System
 
 A personalized recommendation system that recommends Indian States/UTs based on individual livability preferences.
 
-### Factors
+## Factors
+Education • Safety • Health • Housing • Economy • Environment • Connectivity
 
-Healthcare • Safety • Education • Cost of Living • Environment • Housing • Mobility
+## Method
+User preferences → AHP weights (with consistency check) → TOPSIS → Personalized State/UT ranking
 
-### Method
+## Team
+- Saipriya R — 24BDS1100
+- Sahana Pasupathy — 24BDS1049
 
-**AHP** → User preference weights
-**TOPSIS** → Personalized State/UT ranking
-
-### Team
-
-* Saipriya R — 24BDS1100
-* Sahana Pasupathy — 24BDS1049
-
-**Status:** Under Development
+Status: Under Development
