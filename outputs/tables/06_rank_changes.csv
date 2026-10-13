@@ -1,0 +1,109 @@
+"Persona","State","Low_Confidence","Baseline_Rank","Personal_Rank","Rank_Change","Baseline_Closeness","Personal_Closeness"
+"Young Professional","Delhi",FALSE,14,1,13,0.5837,0.8222
+"Young Professional","Chandigarh",TRUE,1,2,-1,0.7251,0.7684
+"Young Professional","Goa",FALSE,3,3,0,0.6988,0.7154
+"Young Professional","Kerala",FALSE,4,4,0,0.6857,0.6565
+"Young Professional","Manipur",FALSE,17,5,12,0.5747,0.6325
+"Young Professional","Tripura",FALSE,19,6,13,0.5367,0.6294
+"Young Professional","Uttarakhand",FALSE,6,7,-1,0.641,0.5946
+"Young Professional","Karnataka",FALSE,7,8,-1,0.6334,0.5874
+"Young Professional","Tamil Nadu",FALSE,11,9,2,0.6093,0.5795
+"Young Professional","Punjab",FALSE,8,10,-2,0.6315,0.5762
+"Young Professional","Gujarat",FALSE,13,11,2,0.5935,0.5421
+"Young Professional","Himachal Pradesh",FALSE,2,12,-10,0.7019,0.5396
+"Young Professional","Mizoram",FALSE,21,13,8,0.534,0.5295
+"Young Professional","Lakshadweep",TRUE,5,14,-9,0.6639,0.5288
+"Young Professional","Assam",FALSE,23,15,8,0.515,0.5267
+"Young Professional","Puducherry",FALSE,15,16,-1,0.583,0.5252
+"Young Professional","Sikkim",FALSE,12,17,-5,0.599,0.5061
+"Young Professional","Maharashtra",FALSE,9,18,-9,0.6188,0.5012
+"Young Professional","Rajasthan",FALSE,24,19,5,0.505,0.4679
+"Young Professional","Haryana",FALSE,27,20,7,0.4712,0.464
+"Young Professional","Jammu and Kashmir",FALSE,16,21,-5,0.5814,0.4534
+"Young Professional","Ladakh",TRUE,10,22,-12,0.6144,0.4365
+"Young Professional","Telangana",FALSE,22,23,-1,0.5188,0.4316
+"Young Professional","West Bengal",FALSE,25,24,1,0.493,0.4218
+"Young Professional","Andhra Pradesh",FALSE,18,25,-7,0.5588,0.4187
+"Young Professional","Uttar Pradesh",FALSE,30,26,4,0.4283,0.4093
+"Young Professional","Chhattisgarh",FALSE,33,27,6,0.4026,0.3634
+"Young Professional","Odisha",FALSE,31,28,3,0.4078,0.3463
+"Young Professional","Nagaland",FALSE,29,29,0,0.4434,0.321
+"Young Professional","Dadra and Nagar Haveli and Daman and Diu",FALSE,26,30,-4,0.4866,0.3031
+"Young Professional","Arunachal Pradesh",FALSE,28,31,-3,0.4526,0.2992
+"Young Professional","A&N Islands",TRUE,20,32,-12,0.5352,0.2905
+"Young Professional","Bihar",FALSE,36,33,3,0.2969,0.287
+"Young Professional","Jharkhand",FALSE,35,34,1,0.3282,0.2532
+"Young Professional","Madhya Pradesh",FALSE,32,35,-3,0.4037,0.2248
+"Young Professional","Meghalaya",FALSE,34,36,-2,0.3781,0.2059
+"Family","Himachal Pradesh",FALSE,2,1,1,0.7019,0.779
+"Family","Chandigarh",TRUE,1,2,-1,0.7251,0.7627
+"Family","Punjab",FALSE,8,3,5,0.6315,0.759
+"Family","Lakshadweep",TRUE,5,4,1,0.6639,0.7494
+"Family","Ladakh",TRUE,10,5,5,0.6144,0.6709
+"Family","Maharashtra",FALSE,9,6,3,0.6188,0.6651
+"Family","Kerala",FALSE,4,7,-3,0.6857,0.6581
+"Family","Goa",FALSE,3,8,-5,0.6988,0.6296
+"Family","Uttarakhand",FALSE,6,9,-3,0.641,0.6192
+"Family","Sikkim",FALSE,12,10,2,0.599,0.612
+"Family","A&N Islands",TRUE,20,11,9,0.5352,0.6118
+"Family","West Bengal",FALSE,25,12,13,0.493,0.6046
+"Family","Karnataka",FALSE,7,13,-6,0.6334,0.5993
+"Family","Gujarat",FALSE,13,14,-1,0.5935,0.5936
+"Family","Dadra and Nagar Haveli and Daman and Diu",FALSE,26,15,11,0.4866,0.5885
+"Family","Jammu and Kashmir",FALSE,16,16,0,0.5814,0.585
+"Family","Rajasthan",FALSE,24,17,7,0.505,0.5821
+"Family","Andhra Pradesh",FALSE,18,18,0,0.5588,0.5648
+"Family","Tamil Nadu",FALSE,11,19,-8,0.6093,0.546
+"Family","Tripura",FALSE,19,20,-1,0.5367,0.5421
+"Family","Delhi",FALSE,14,21,-7,0.5837,0.5316
+"Family","Madhya Pradesh",FALSE,32,22,10,0.4037,0.4924
+"Family","Puducherry",FALSE,15,23,-8,0.583,0.4907
+"Family","Uttar Pradesh",FALSE,30,24,6,0.4283,0.4885
+"Family","Haryana",FALSE,27,25,2,0.4712,0.4761
+"Family","Nagaland",FALSE,29,26,3,0.4434,0.4427
+"Family","Telangana",FALSE,22,27,-5,0.5188,0.4423
+"Family","Manipur",FALSE,17,28,-11,0.5747,0.4405
+"Family","Odisha",FALSE,31,29,2,0.4078,0.4251
+"Family","Mizoram",FALSE,21,30,-9,0.534,0.4251
+"Family","Chhattisgarh",FALSE,33,31,2,0.4026,0.4217
+"Family","Arunachal Pradesh",FALSE,28,32,-4,0.4526,0.4127
+"Family","Meghalaya",FALSE,34,33,1,0.3781,0.3958
+"Family","Jharkhand",FALSE,35,34,1,0.3282,0.3944
+"Family","Assam",FALSE,23,35,-12,0.515,0.3935
+"Family","Bihar",FALSE,36,36,0,0.2969,0.3321
+"Retiree","Lakshadweep",TRUE,5,1,4,0.6639,0.8731
+"Retiree","Ladakh",TRUE,10,2,8,0.6144,0.8565
+"Retiree","Karnataka",FALSE,7,3,4,0.6334,0.8141
+"Retiree","Andhra Pradesh",FALSE,18,4,14,0.5588,0.8012
+"Retiree","Kerala",FALSE,4,5,-1,0.6857,0.784
+"Retiree","Himachal Pradesh",FALSE,2,6,-4,0.7019,0.7754
+"Retiree","A&N Islands",TRUE,20,7,13,0.5352,0.7715
+"Retiree","Tamil Nadu",FALSE,11,8,3,0.6093,0.7693
+"Retiree","Jammu and Kashmir",FALSE,16,9,7,0.5814,0.7443
+"Retiree","Goa",FALSE,3,10,-7,0.6988,0.7369
+"Retiree","Maharashtra",FALSE,9,11,-2,0.6188,0.7079
+"Retiree","Uttarakhand",FALSE,6,12,-6,0.641,0.6824
+"Retiree","Telangana",FALSE,22,13,9,0.5188,0.6708
+"Retiree","Gujarat",FALSE,13,14,-1,0.5935,0.6631
+"Retiree","Arunachal Pradesh",FALSE,28,15,13,0.4526,0.6576
+"Retiree","Mizoram",FALSE,21,16,5,0.534,0.6541
+"Retiree","Sikkim",FALSE,12,17,-5,0.599,0.6448
+"Retiree","Chandigarh",TRUE,1,18,-17,0.7251,0.6134
+"Retiree","Assam",FALSE,23,19,4,0.515,0.6082
+"Retiree","Puducherry",FALSE,15,20,-5,0.583,0.6031
+"Retiree","Meghalaya",FALSE,34,21,13,0.3781,0.5645
+"Retiree","Manipur",FALSE,17,22,-5,0.5747,0.5619
+"Retiree","Odisha",FALSE,31,23,8,0.4078,0.555
+"Retiree","Madhya Pradesh",FALSE,32,24,8,0.4037,0.5549
+"Retiree","Punjab",FALSE,8,25,-17,0.6315,0.5414
+"Retiree","Dadra and Nagar Haveli and Daman and Diu",FALSE,26,26,0,0.4866,0.5385
+"Retiree","Chhattisgarh",FALSE,33,27,6,0.4026,0.5384
+"Retiree","Tripura",FALSE,19,28,-9,0.5367,0.535
+"Retiree","West Bengal",FALSE,25,29,-4,0.493,0.5301
+"Retiree","Nagaland",FALSE,29,30,-1,0.4434,0.5005
+"Retiree","Jharkhand",FALSE,35,31,4,0.3282,0.4829
+"Retiree","Rajasthan",FALSE,24,32,-8,0.505,0.474
+"Retiree","Delhi",FALSE,14,33,-19,0.5837,0.4566
+"Retiree","Uttar Pradesh",FALSE,30,34,-4,0.4283,0.394
+"Retiree","Haryana",FALSE,27,35,-8,0.4712,0.3893
+"Retiree","Bihar",FALSE,36,36,0,0.2969,0.2523
