@@ -1,0 +1,13 @@
+"Test","Set","Base_Top3","Alt_Top3","Spearman"
+"Low-confidence left out","Young Professional","Delhi > Chandigarh > Goa","Delhi > Goa > Kerala",0.995234604105572
+"Low-confidence left out","Family","Himachal Pradesh > Chandigarh > Punjab","Himachal Pradesh > Punjab > Maharashtra",1
+"Low-confidence left out","Retiree","Lakshadweep > Ladakh > Karnataka","Karnataka > Andhra Pradesh > Kerala",0.999633431085044
+"Low-confidence left out","Equal weights","Chandigarh > Himachal Pradesh > Goa","Himachal Pradesh > Goa > Kerala",0.997800586510264
+"Weighted sum","Young Professional","Delhi > Chandigarh > Goa","Delhi > Chandigarh > Goa",0.985328185328185
+"Weighted sum","Family","Himachal Pradesh > Chandigarh > Punjab","Lakshadweep > Chandigarh > Himachal Pradesh",0.966795366795367
+"Weighted sum","Retiree","Lakshadweep > Ladakh > Karnataka","Lakshadweep > Ladakh > Karnataka",0.96988416988417
+"Weighted sum","Equal weights","Chandigarh > Himachal Pradesh > Goa","Chandigarh > Goa > Himachal Pradesh",0.993050193050193
+"Vector normalisation","Young Professional","Delhi > Chandigarh > Goa","Delhi > Chandigarh > Goa",0.993307593307593
+"Vector normalisation","Family","Himachal Pradesh > Chandigarh > Punjab","Himachal Pradesh > Chandigarh > Punjab",0.981724581724582
+"Vector normalisation","Retiree","Lakshadweep > Ladakh > Karnataka","Lakshadweep > Ladakh > Karnataka",0.994337194337194
+"Vector normalisation","Equal weights","Chandigarh > Himachal Pradesh > Goa","Chandigarh > Goa > Kerala",0.974774774774775

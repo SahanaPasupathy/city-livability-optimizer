@@ -63,6 +63,16 @@ Importance answers (1-5) for three personas: Young Professional, Family and Reti
 - **Low-confidence States rank high** (Chandigarh, Ladakh, Lakshadweep appear in several top 3s). The app has a switch to leave them out; for the Retiree persona the top 3 then becomes Karnataka, Andhra Pradesh, Kerala.
 - Tables are in `outputs/tables/` and figures in `outputs/figures/`.
 
+### Robustness (Step 9, `analysis/10_sensitivity.R`)
+
+How much do the recommendations change if the weights or the method change a little?
+
+- **Random weight changes** (1000 draws per persona; each weight moves by about 0.02-0.06). The number 1 choice stays the same in 82% of draws for Young Professional, 40% for Family, 68% for Retiree and 51% for equal weights. The exact top 3 stays the same in 77%, 47%, 59% and 22% of draws. The average Spearman correlation with the original ranking is 0.92 to 0.97. So **the overall ranking is stable, but the order inside the top 3 is not**: Delhi (99%), Lakshadweep (97%) and Ladakh (93%) almost always stay in the top 3, while third place (for example Punjab 64%, Karnataka 67%) often swaps with the next State.
+- **Ignoring one criterion at a time.** Ranking correlation with the original stays above 0.65 in every case. Some criteria matter a lot for some people: ignoring Connectivity changes the Young Professional top 3 to Manipur, Delhi, Tripura, ignoring Education or Safety changes the Family top 3, and ignoring Environment or Health changes the Retiree top 3.
+- **Leaving out the 4 low-confidence States/UTs** hardly changes the order of the others (Spearman 0.995 to 1.000), but it does change the top 3 of the Retiree persona (Lakshadweep and Ladakh drop out).
+- **Different method.** A simple weighted sum agrees with TOPSIS (Spearman 0.97 to 0.99) and gives the same top 3 as a set in 3 of 4 cases. Vector normalisation also agrees (0.975 to 0.994).
+- Figure: `outputs/figures/10_top3_stability.png`. Tables: `outputs/tables/10_*.csv`.
+
 ## 5. The Shiny app
 
 Features: flashcard questions, three presets (Young Professional, Family, Retiree), a skip option (equal weights), the top 3 with "Why this fits you", an interactive India map coloured by closeness, a searchable and sortable full ranking, a weights panel with the consistency check, "How it works" and "About and limits" tabs, and a downloadable personal report (HTML).
@@ -92,14 +102,16 @@ Source the scripts in `analysis/` in order from the project root, for example `s
 | `07_map.R` | Interactive map files (`outputs/maps/`) |
 | `08_app_check.R` | Checks of the app's logic |
 | `09_report_check.R` | Checks of the report and texts |
+| `10_sensitivity.R` | Sensitivity and robustness analysis |
 
 ## 6. Project structure
 
 ```
 app/                 Shiny app (app.R, www/style.css, www/table.js)
 R/                   Tested functions: common, ahp, topsis, similarity,
-                     explain, compare, map, app_logic, app_text, report
-analysis/            Numbered scripts (01-09)
+                     explain, compare, map, app_logic, app_text, report,
+                     sensitivity
+analysis/            Numbered scripts (01-10)
 data/                Dataset and map outlines (data/map/)
 data_extraction/     build_map_paths.py: how the map outlines were made
 outputs/             Tables, figures, maps, sample report
