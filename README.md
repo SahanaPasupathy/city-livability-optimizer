@@ -103,6 +103,18 @@ Source the scripts in `analysis/` in order from the project root, for example `s
 | `08_app_check.R` | Checks of the app's logic |
 | `09_report_check.R` | Checks of the report and texts |
 | `10_sensitivity.R` | Sensitivity and robustness analysis |
+| `11_run_tests.R` | Runs the automated tests in `tests/testthat/` |
+
+### Automated tests
+
+Run `source("analysis/11_run_tests.R")` (needs `install.packages("testthat")`). The 25 tests cover:
+
+- AHP: the difference rule, a perfectly consistent matrix, Saaty's textbook 3x3 example and contradictory answers.
+- TOPSIS: a small case checked by hand and rejection of bad inputs.
+- Similar States/UTs: nearest-distance results.
+- The real data and the app's calculation: the three persona top 3s, the dataset's shape, and the low-confidence switch.
+
+Breaking the code on purpose makes tests fail, so they do catch mistakes.
 
 ## 6. Project structure
 
@@ -111,9 +123,10 @@ app/                 Shiny app (app.R, www/style.css, www/table.js)
 R/                   Tested functions: common, ahp, topsis, similarity,
                      explain, compare, map, app_logic, app_text, report,
                      sensitivity
-analysis/            Numbered scripts (01-10)
+analysis/            Numbered scripts (01-11)
 data/                Dataset and map outlines (data/map/)
 data_extraction/     build_map_paths.py: how the map outlines were made
+tests/testthat/      Automated tests (testthat)
 outputs/             Tables, figures, maps, sample report
 ```
 
