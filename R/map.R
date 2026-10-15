@@ -125,21 +125,29 @@ india_map_assets <- function() {
 #' @return htmltools tag (map + legend). Add india_map_assets() to the page once.
 render_india_map <- function(results, X, low_confidence = character(0),
                              map_data = load_map_paths()) {
-  gap <- c(setdiff(map_data$State, results$State), setdiff(results$State, map_data$State))
-  if (length(gap) > 0) {
+  unknown <- setdiff(results$State, map_data$State)
+  if (length(unknown) > 0) {
     stop("State names do not match between the map and the results: ",
-         paste(unique(gap), collapse = ", "), call. = FALSE)
+         paste(unknown, collapse = ", "), call. = FALSE)
   }
+  # States/UTs missing from `results` were excluded from this ranking: they stay
+  # on the map in grey (Closeness and Rank are NA for them).
   res <- results[match(map_data$State, results$State), ]
-  cols <- closeness_colours(res$Closeness)
+  included <- !is.na(res$Closeness)
+  cols <- rep("#E5E7EB", nrow(res))
+  cols[included] <- closeness_colours(res$Closeness[included])
   view <- sprintf("0 0 %s %s", map_data$ViewW[1], map_data$ViewH[1])
   tag <- htmltools::tag
   
   attrs <- function(i) {
     st <- map_data$State[i]
-    list(`data-state` = st,
-         `data-tip` = map_tooltip(st, res$Rank[i], res$Closeness[i], X[st, ],
-                                  st %in% low_confidence))
+    tip <- if (included[i]) {
+      map_tooltip(st, res$Rank[i], res$Closeness[i], X[st, ], st %in% low_confidence)
+    } else {
+      sprintf("<div class='ilm-title'>%s</div><div class='ilm-sub'>Excluded from this ranking</div>",
+              htmltools::htmlEscape(st))
+    }
+    list(`data-state` = st, `data-tip` = tip)
   }
   # Draw large States/UTs first so small ones are never hidden underneath.
   draw_order <- order(-map_data$Area)
@@ -153,7 +161,7 @@ render_india_map <- function(results, X, low_confidence = character(0),
   # exactly in the middle of it, with the closeness colour showing as a ring.
   markers <- lapply(small, function(i) {
     do.call(tag, list("circle", c(list(cx = map_data$MarkerX[i], cy = map_data$MarkerY[i],
-                                       r = if (res$Rank[i] <= 3) 16 else 12,
+                                       r = if (isTRUE(res$Rank[i] <= 3)) 16 else 12,
                                        fill = cols[i], class = "ilm-state"),
                                   attrs(i))))
   })
@@ -176,7 +184,7 @@ render_india_map <- function(results, X, low_confidence = character(0),
                          `aria-label` = "Map of India shaded by personalised match",
                          tag("g", shapes), tag("g", markers), tag("g", badges)))
   
-  rng <- range(res$Closeness)
+  rng <- range(res$Closeness, na.rm = TRUE)
   grad <- sprintf("linear-gradient(to right, %s)", paste(MAP_RAMP, collapse = ", "))
   legend <- htmltools::tags$div(
     class = "ilm-legend",
@@ -184,10 +192,11 @@ render_india_map <- function(results, X, low_confidence = character(0),
                         htmltools::tags$span(sprintf("Weaker match (%.2f)", rng[1])),
                         htmltools::tags$span(sprintf("Better match (%.2f)", rng[2]))),
     htmltools::tags$div(class = "ilm-grad", style = paste0("background:", grad)),
-    htmltools::tags$div(class = "ilm-note",
-                        "Colour = TOPSIS closeness for YOUR priorities (darker = better). Circles mark very small ",
-                        "States/UTs; numbered badges mark your top 3; a dashed grey outline means low data confidence. ",
-                        "Hover for scores, click to select."))
+    htmltools::tags$div(class = "ilm-note", paste0(
+      "Colour = TOPSIS closeness for YOUR priorities (darker = better). Circles mark very small ",
+      "States/UTs; numbered badges mark your top 3; a dashed grey outline means low data confidence",
+      if (any(!included)) "; plain grey means excluded from this ranking" else "",
+      ". Hover for scores, click to select.")))
   htmltools::tags$div(class = "ilm-map", svg, legend)
 }
 

@@ -89,3 +89,54 @@ explain_state <- function(res, w, state, low_confidence = character(0)) {
   }
   out
 }
+
+#' "Why this fits you": how a State/UT performs on the user's top priorities.
+#'
+#' Takes the user's `k` highest-weighted criteria and, for each, reports the
+#' weight, the State/UT's score and its position among all States/UTs, a verdict
+#' and one sentence built from those real numbers. Verdict thresholds:
+#' score >= 0.70 strong match, 0.40 to 0.70 moderate match, below 0.40 falls short.
+#'
+#' @param res list returned by topsis().
+#' @param w named AHP weights (any order; re-scaled to sum to 1).
+#' @param state State/UT to explain.
+#' @param k number of top priorities to report.
+#' @return data.frame(Criterion, Weight, Score, Position, Verdict, Sentence).
+priority_breakdown <- function(res, w, state, k = 3) {
+  X <- res$decision
+  if (!state %in% rownames(X)) stop("Unknown State/UT: ", state, call. = FALSE)
+  w <- w[colnames(X)] / sum(w)
+  n <- nrow(X)
+  top <- names(sort(w, decreasing = TRUE))[seq_len(min(k, length(w)))]
+  score <- X[state, top]
+  pos <- sapply(top, function(cn) unname(rank(-X[, cn], ties.method = "min")[state]))
+  verdict <- ifelse(score >= 0.70, "Strong match",
+                    ifelse(score >= 0.40, "Moderate match", "Falls short"))
+  phrase <- c("Strong match"   = "making it a strong match for one of your main priorities",
+              "Moderate match" = "making it a moderate match for one of your main priorities",
+              "Falls short"    = "so it falls short on one of your main priorities")
+  data.frame(
+    Criterion = top, Weight = unname(w[top]), Score = unname(score),
+    Position = unname(pos), Verdict = unname(verdict),
+    Sentence = sprintf("%s carries %.0f%% of your preference weight. %s scores %.2f/1.00 in %s (%s of %d), %s.",
+                       top, 100 * w[top], state, score, top, ordinal(pos), n,
+                       phrase[verdict]),
+    row.names = NULL, stringsAsFactors = FALSE)
+}
+
+#' Where a State/UT falls furthest short of a perfect score, weighted by what the
+#' user cares about: the criterion with the largest w_j * (1 - score_j).
+#'
+#' @param res list returned by topsis().
+#' @param w named AHP weights (any order; re-scaled to sum to 1).
+#' @param state State/UT to explain.
+#' @return one sentence.
+shortfall_sentence <- function(res, w, state) {
+  X <- res$decision
+  if (!state %in% rownames(X)) stop("Unknown State/UT: ", state, call. = FALSE)
+  w <- w[colnames(X)] / sum(w)
+  loss <- w * (1 - X[state, ])
+  worst <- names(which.max(loss))
+  sprintf("Where it falls furthest short: %s. It scores %.2f there and %s carries %.0f%% of your weight, so it costs %.3f of a possible %.3f weighted points.",
+          worst, X[state, worst], worst, 100 * w[worst], loss[worst], w[worst])
+}
