@@ -16,7 +16,7 @@ CRITERION_INDICATORS <- list(
 
 # The method, step by step, for the "How it was calculated" tab and the report.
 METHOD_STEPS <- c(
-  "Seven criteria. 17 indicators from official sources are grouped into Education, Safety, Health, Housing, Economy, Environment and Connectivity. Each criterion is scaled to 0-1 so that higher is always better and different units can be compared.",
+  "Seven criteria. 17 indicators are grouped into Education, Safety, Health, Housing, Economy, Environment and Connectivity. Each criterion is scaled to 0-1 so that higher is always better and different units can be compared.",
   "Your answers. You rate each criterion from 1 (not important) to 5 (extremely important).",
   "Pairwise comparisons (AHP). For every pair of criteria, the difference between your two answers becomes a comparison on Saaty's 1-9 scale: equal answers mean equal importance, one point apart means 'moderately more important', and so on up to 'extremely'.",
   "Your weights. The weights are the principal eigenvector of that 7x7 comparison matrix. They sum to 100% and show how much each criterion counts for you.",
