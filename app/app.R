@@ -1,5 +1,5 @@
 # ==============================================================================
-# City Livability Optimizer - Shiny app (Step 7a)
+# City Livability Optimizer - Shiny app (Steps 7a-7b)
 # ------------------------------------------------------------------------------
 # Flow : welcome -> seven flashcard questions (1-5) -> results.
 # Calculations are NOT done here: they come from the tested functions in R/
@@ -21,7 +21,7 @@ ROOT <- if (file.exists(file.path("..", "R", "common.R"))) {
 } else {
   stop("Cannot find the project's R/ folder. Open the RStudio project first.")
 }
-for (f in c("common", "ahp", "topsis", "similarity", "explain", "map", "app_logic")) {
+for (f in c("common", "ahp", "topsis", "similarity", "explain", "map", "app_logic", "app_text", "report")) {
   source(file.path(ROOT, "R", paste0(f, ".R")))
 }
 d          <- load_livability_data(file.path(ROOT, "data", "State_UT_Livability_Dataset_Final.csv"))
@@ -140,15 +140,34 @@ ranking_table <- function(rec) {
             tags$td(if (st %in% LOW_CONF) "low confidence" else ""))
   })
   div(class = "panel-card",
+      tags$input(type = "search", class = "table-search", placeholder = "Search a State/UT...",
+                 oninput = "ilmFilterTable(this)"),
       div(class = "table-scroll",
-          tags$table(class = "rank-table",
+          tags$table(class = "rank-table", id = "rank-table",
                      tags$thead(tags$tr(lapply(c("Rank", "State/UT", "Type", "Match (closeness)",
                                                  "Distance to ideal (D+)", "Distance to worst (D-)", "Note"),
-                                               tags$th))),
+                                               function(h) tags$th(h, title = "Click to sort", onclick = "ilmSortTable(this)")))),
                      tags$tbody(rows))),
       if (length(rec$excluded) > 0) {
         div(class = "note", "Not ranked (excluded by your choice): ", paste(rec$excluded, collapse = ", "))
       })
+}
+
+method_panel <- function() {
+  div(class = "panel-card prose",
+      tags$h4("How it was calculated"),
+      tags$ol(lapply(METHOD_STEPS, tags$li)),
+      tags$h4("What each criterion is built from"),
+      tags$ul(lapply(CRITERIA, function(cn) tags$li(tags$b(cn), ": ", CRITERION_INDICATORS[[cn]]))))
+}
+
+about_panel <- function() {
+  div(class = "panel-card prose",
+      tags$h4("About this project"),
+      tags$p("Personalized State and UT Livability Recommendation System. Programming for Data Science (BCSE207L), ",
+             "built in R with AHP, TOPSIS and Shiny."),
+      tags$h4("Limits to keep in mind"),
+      tags$ul(lapply(LIMITATIONS, tags$li)))
 }
 
 weights_panel <- function(rec) {
@@ -174,6 +193,7 @@ results_screen <- function(exclude_now) {
       div(class = "result-head",
           div(tags$h2("Your livability matches"), uiOutput("mode_note")),
           div(class = "head-actions",
+              downloadLink("report", "Download my report", class = "btn-soft"),
               ui_button("edit_answers", "Edit my answers", "btn-soft"),
               ui_button("restart", "Start over", "btn-ghost"))),
       div(class = "toggle-row",
@@ -184,7 +204,9 @@ results_screen <- function(exclude_now) {
                   nav_panel("Top 3", uiOutput("top3")),
                   nav_panel("Map", div(class = "panel-card", uiOutput("map_ui")), uiOutput("map_detail")),
                   nav_panel("Full ranking", uiOutput("ranking")),
-                  nav_panel("My weights", uiOutput("weights"))))
+                  nav_panel("My weights", uiOutput("weights")),
+                  nav_panel("How it works", method_panel()),
+                  nav_panel("About and limits", about_panel())))
 }
 
 # ---- User interface ----------------------------------------------------------
@@ -194,7 +216,7 @@ ui <- page_fluid(
                    base_font = font_collection("system-ui", "Segoe UI", "Roboto",
                                                "Helvetica Neue", "Arial", "sans-serif")),
   tags$head(tags$link(rel = "stylesheet", type = "text/css", href = "style.css"),
-            india_map_assets()),
+            india_map_assets(), tags$script(src = "table.js")),
   div(class = "app-shell", uiOutput("screen"))
 )
 
@@ -290,6 +312,13 @@ server <- function(input, output, session) {
           tagList(tags$h4(st), tags$p("This State/UT is excluded from the current ranking."))
         })
   })
+  
+  output$report <- downloadHandler(
+    filename = function() paste0("my_livability_report_", format(Sys.Date(), "%Y%m%d"), ".html"),
+    content = function(file) {
+      writeLines(build_report_html(rec(), X, LOW_CONF, state$source, STATE_TYPE), file, useBytes = TRUE)
+    },
+    contentType = "text/html")
   
   output$ranking <- renderUI(ranking_table(rec()))
   output$weights <- renderUI(weights_panel(rec()))
