@@ -456,7 +456,11 @@ server <- function(input, output, session) {
   output$robustness <- renderUI({
     rb <- robust()
     if (inherits(rb, "robust_error")) return(div(class = "note", "The simulation could not run: ", rb$message))
-    pct <- function(x) sprintf("%.0f%%", 100 * x)
+    # Never round a share that occurred to "0%", or one that is not certain to "100%".
+    pct <- function(x) {
+      out <- sprintf("%.0f%%", 100 * x)
+      ifelse(out == "0%" & x > 0, "<1%", ifelse(out == "100%" & x < 1, ">99%", out))
+    }
     n_txt <- format(rb$settings$n, big.mark = ",")
     s <- rb$summary
     base_top3 <- rb$baseline$results$State[rb$baseline$results$Rank <= 3]
@@ -489,7 +493,8 @@ server <- function(input, output, session) {
                      tags$thead(tags$tr(lapply(c("State/UT", "Your rank", "Match score", "Rank 1", "Top 3", "Top 5", "Top 10",
                                                  "Simulated rank: median (5-95%)", "Data note"), tags$th))),
                      tags$tbody(rows))),
-      tags$p(class = "note", "\"Your rank\" and \"Match score\" are your actual TOPSIS results. The other columns are simulated."),
+      tags$p(class = "note", "\"Your rank\" and \"Match score\" are your actual TOPSIS results. The other columns are simulated. ",
+             "Rows are sorted by top-3 share, then by your rank."),
       if (!is.null(strong) && nrow(strong) > 0) {
         tags$p(paste0("What moves ", rb$baseline$state, " most: ",
                       paste(sprintf("%s (more weight tends to move it %s)", strong$Criterion, ifelse(strong$Rho_Top_Rank > 0, "down", "up")),

@@ -170,7 +170,7 @@ Last full run: 17 October 2026, R 4.6.1 on macOS (arm64), after the added featur
 | Area | Status |
 |---|---|
 | Calculations (AHP, TOPSIS, Pareto, robustness, what-if, explanations) | 67 testthat tests (391 expectations) pass; `analysis/01`-`10` checks pass. |
-| Shiny app (`app/app.R`, `app/www/`) | Started and driven in headless Chromium: 45 smoke checks pass (`tests/browser/`), including numbers compared with R. `analysis/08_app_check.R`: 29/29. |
+| Shiny app (`app/app.R`, `app/www/`) | Started and driven in headless Chromium: 47 smoke checks pass (`tests/browser/`), including numbers compared with R. `analysis/08_app_check.R`: 29/29. |
 | Map and report (`R/map.R`, `R/report.R`) | `analysis/07_map.R` 15/15, `09_report_check.R` 16/16; `outputs/maps/` and `outputs/reports/` regenerated and inspected. |
 | Data, documentation, committed results | Python audit and repository checks pass (see [`docs/TESTING.md`](docs/TESTING.md)). |
 | Not tested | Visual design and accessibility of the interface (being handed over), browsers other than Chromium, deployment to a Shiny server. The CI workflow has not run on GitHub yet. |

@@ -82,12 +82,27 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   const delhi = rrow.find(r => r[0] === 'Delhi');
   ok('robustness: baseline rank and score shown apart from simulated rank (Delhi 1, 0.791, 2 (1-10))', delhi[1] === '1' && delhi[2] === '0.791' && delhi[7] === '2 (1-10)', delhi.join(' / '));
   ok('robustness: data notes and assumptions shown', (await p.textContent('#robust-table')).includes('low confidence') && (await p.textContent('#robustness')).includes('Data uncertainty is not modelled'));
+  // The shown top-3 shares must agree with the downloaded CSV: "0%" only when
+  // no simulation had the place in the top 3, "100%" only when all did.
+  const sharesMatchCsv = async (label) => {
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#rb_csv')]);
+    const f = `${OUT}/robust-${label.replace(/\W+/g, '-')}.csv`; await dl.saveAs(f);
+    const rows = fs.readFileSync(f, 'utf8').trim().split('\n').map(l => l.split(','));
+    const col = (n) => rows[0].findIndex(h => h.replace(/"/g, '') === n);
+    const share = Object.fromEntries(rows.slice(1).map(r => [r[col('State')].replace(/"/g, ''), +r[col('Top3_Prop')]]));
+    const shown = await p.$$eval('#robust-table tbody tr', r => r.map(x => [x.cells[0].textContent.trim(), x.cells[4].textContent.trim()]));
+    ok(`robustness: shown top-3 shares agree with the CSV, ${label}`,
+       shown.every(([st, v]) => (v === '0%') === (share[st] === 0) && (v === '100%') === (share[st] === 1)),
+       shown.filter(([st]) => share[st] > 0 && share[st] < 0.01).map(x => x.join(' ')).join(', ') || 'no share below 1% shown');
+  };
+  await sharesMatchCsv('default settings');
   await p.selectOption('#rb_level', 'high'); await p.selectOption('#rb_n', '500'); await p.fill('#rb_seed', '7');
   await p.click('#rb_run'); await idle(p);
   ok('robustness: other settings match R (not sure, 500, seed 7: 34% / 49%)', (await p.textContent('#robustness')).includes('stays first in 34% and in your top 3 in 49% of 500'));
   const [csv] = await Promise.all([p.waitForEvent('download'), p.click('#rb_csv')]);
   const cp = OUT + '/robust.csv'; await csv.saveAs(cp);
   ok('robustness: CSV download has all 36 States/UTs', fs.readFileSync(cp, 'utf8').trim().split('\n').length === 37);
+  await sharesMatchCsv('other settings');
 
   // -- What if: compared with run_scenario() in R --
   await tab('What if');
