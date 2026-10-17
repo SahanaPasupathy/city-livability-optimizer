@@ -37,7 +37,8 @@ test_that("equal answers give equal weights; higher answers give higher weights"
   expect_equal(unname(eq$weights), rep(1 / 7, 7), tolerance = 1e-12)
   expect_equal(eq$CR, 0, tolerance = 1e-12)
   a <- run_ahp(setNames(c(5, 4, 3, 3, 2, 2, 1), CRITERIA))
-  expect_false(is.unsorted(rev(unname(a$weights))))
+  # Allow rounding differences of 1e-12 between tied weights
+  expect_true(all(diff(rev(unname(a$weights))) >= -1e-12))
   expect_equal(sum(a$weights), 1, tolerance = 1e-12)
 })
 
