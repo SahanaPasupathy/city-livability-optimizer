@@ -1,0 +1,48 @@
+# Checks that run without R. They test the data, the documentation, the
+# committed results and the syntax of the R and JavaScript files. They do NOT
+# run the R code; see docs/TESTING.md and docs/ROADMAP.md.
+name: Checks (no R)
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Data audit (fails on structural defects)
+        run: python3 tools/audit_data.py --check
+
+      - name: Generated audit report is committed and current
+        run: git diff --exit-code -- docs/DATA_AUDIT.md
+
+      - name: Repository consistency (metadata, links, committed results)
+        run: python3 tools/check_repo.py
+
+      - name: Tests for the Python tools
+        run: python3 -m unittest discover -s tests/python -v
+
+      - name: R syntax (tree-sitter parse, does not run R)
+        run: |
+          npm ci --ignore-scripts --prefix tools/r-syntax
+          node tools/r-syntax/check.js
+
+      - name: JavaScript syntax
+        run: for f in app/www/*.js tests/browser/*.js; do node --check "$f" || exit 1; done
+
+      - name: Markdown lint
+        run: npx --yes markdownlint-cli2@0.18.1

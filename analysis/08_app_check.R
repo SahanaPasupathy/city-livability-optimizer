@@ -58,7 +58,9 @@ check("Incomplete answers are rejected with an error",
 fam <- compute_recommendation(setNames(as.integer(PERSONAS[["Family"]]), CRITERIA), X, low_conf)
 wt <- weights_table(fam$ahp)
 check("Weights table is sorted largest first and sums to 1",
-      !is.unsorted(rev(wt$Weight)) && abs(sum(wt$Weight) - 1) < 1e-12)
+      !is.unsorted(rev(round(wt$Weight, 12))) && abs(sum(wt$Weight) - 1) < 1e-12)
+check("Equally rated criteria keep the criterion order (no floating-point tie noise)",
+      identical(wt$Criterion[1:3], c("Education", "Safety", "Health")))
 check("Consistency message reports 'consistent' for a normal set of answers",
       grepl("consistent", consistency_message(fam$ahp)))
 
@@ -116,7 +118,7 @@ check("A State name that is not on the map is still rejected",
 
 # ---- 6. The app file itself ----------------------------------------------------
 cat("\n--- 6. App file ---\n")
-check("app/www/style.css exists", file.exists(file.path("app", "www", "style.css")))
+check("app/www/style.css and the logo exist", all(file.exists(file.path("app", "www", c("style.css", "img/logo.svg")))))
 app <- local({
   old <- setwd("app"); on.exit(setwd(old))
   tryCatch(source("app.R", local = new.env())$value, error = function(e) e)

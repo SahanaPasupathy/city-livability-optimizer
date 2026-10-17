@@ -1,0 +1,13 @@
+// Markdown lint settings (run: npx markdownlint-cli2). Long lines and tables are
+// normal in this project's docs, so line length is not enforced.
+{
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD024": { "siblings_only": true },
+    "MD033": false,
+    "MD036": false
+  },
+  "globs": ["README.md", "docs/**/*.md"],
+  "ignores": ["**/node_modules/**"]
+}

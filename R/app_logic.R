@@ -54,7 +54,8 @@ compute_recommendation <- function(answers, X, low_conf = character(0),
 weights_table <- function(ahp) {
   w <- ahp$weights
   out <- data.frame(Criterion = names(w), Weight = unname(w), stringsAsFactors = FALSE)
-  out[order(-out$Weight, match(out$Criterion, CRITERIA)), ]
+  # Rounded so equal ratings keep the criterion order (see by_weight() in explain.R).
+  out[order(-round(out$Weight, 12), match(out$Criterion, CRITERIA)), ]
 }
 
 #' Plain-language reading of the consistency ratio.

@@ -2,3 +2,17 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# R session and deployment files
+.Renviron
+.httr-oauth
+rsconnect/
+
+# Python and Node tooling (tools/, tests/python/)
+__pycache__/
+*.pyc
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db

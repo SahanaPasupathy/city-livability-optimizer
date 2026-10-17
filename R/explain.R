@@ -5,6 +5,16 @@
 # the answers change. Nothing is hard-coded per State/UT or per persona.
 # ==============================================================================
 
+#' Criterion names ordered by weight, largest first.
+#' Weights are rounded to 12 decimals before ordering, so criteria the user
+#' rated equally (whose weights differ only by floating-point noise, which can
+#' vary between machines) keep the fixed criterion order instead of a random one.
+#' @param w named weights.
+#' @return character vector of names.
+by_weight <- function(w) {
+  names(w)[order(-round(w, 12), seq_along(w))]
+}
+
 #' 1 -> "1st", 2 -> "2nd", 11 -> "11th" ...
 ordinal <- function(n) {
   suffix <- ifelse(n %% 100 %in% 11:13, "th",
@@ -54,13 +64,13 @@ explain_state <- function(res, w, state, low_confidence = character(0)) {
                                    cn, score[cn], ordinal(pos[cn]), n)
   
   important <- colnames(X)[w > 1 / p]
-  important <- important[order(-w[important])]
+  important <- intersect(by_weight(w), important)
   strong    <- important[pos[important] <= ceiling(n / 3)]
   weak      <- important[pos[important] > n - ceiling(n / 3)]
   others    <- setdiff(colnames(X), important)
   bonus     <- others[pos[others] <= 5]
   
-  top_w <- names(sort(w, decreasing = TRUE))[1:3]
+  top_w <- by_weight(w)[1:3]
   shortfall <- w * (1 - score)
   worst <- names(which.max(shortfall))
   
@@ -107,7 +117,7 @@ priority_breakdown <- function(res, w, state, k = 3) {
   if (!state %in% rownames(X)) stop("Unknown State/UT: ", state, call. = FALSE)
   w <- w[colnames(X)] / sum(w)
   n <- nrow(X)
-  top <- names(sort(w, decreasing = TRUE))[seq_len(min(k, length(w)))]
+  top <- by_weight(w)[seq_len(min(k, length(w)))]
   score <- X[state, top]
   pos <- sapply(top, function(cn) unname(rank(-X[, cn], ties.method = "min")[state]))
   verdict <- ifelse(score >= 0.70, "Strong match",

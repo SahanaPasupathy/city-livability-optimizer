@@ -8,9 +8,11 @@ ROOT_DIR <- if (file.exists(file.path("..", "..", "R", "common.R"))) {
   stop("Cannot find the project root. Open the .Rproj file first.")
 }
 for (f in c("common", "ahp", "topsis", "similarity", "explain", "compare",
-            "app_logic", "sensitivity")) {
+            "app_logic", "sensitivity", "pareto", "catalogue", "news",
+            "app_text", "report", "robustness", "scenario", "atlas")) {
   source(file.path(ROOT_DIR, "R", paste0(f, ".R")))
 }
 DATA <- load_livability_data(file.path(ROOT_DIR, "data", "State_UT_Livability_Dataset_Final.csv"))
 XM   <- criteria_matrix(DATA)
 LOWC <- DATA$State[DATA$Low_Confidence == 1]
+META <- load_indicator_metadata(file.path(ROOT_DIR, "data", "indicator_metadata.csv"))

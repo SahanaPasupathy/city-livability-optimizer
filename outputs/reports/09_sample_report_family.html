@@ -19,7 +19,7 @@ table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;
 </head>
 <body>
   <h1>My Livability Report</h1>
-  <p class="sub">City Livability Optimizer | Started from the Family preset | generated 15 October 2026</p>
+  <p class="sub">City Livability Optimizer | Started from the Family preset | generated 17 October 2026</p>
   <h2>1. My priorities (AHP weights)</h2>
   <div class="row">
     <span class="lab">Education</span>
@@ -500,7 +500,7 @@ table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;
   </table>
   <h2>4. How this was calculated</h2>
   <ol>
-    <li>Seven criteria. 17 indicators from official sources are grouped into Education, Safety, Health, Housing, Economy, Environment and Connectivity. Each criterion is scaled to 0-1 so that higher is always better and different units can be compared.</li>
+    <li>Seven criteria. 17 indicators are grouped into Education, Safety, Health, Housing, Economy, Environment and Connectivity. Each indicator is put on a 0-1 scale where higher is always better (extreme values are capped first), the indicators of a criterion are averaged, and the result is rescaled to 0-1 so that different units can be compared.</li>
     <li>Your answers. You rate each criterion from 1 (not important) to 5 (extremely important).</li>
     <li>Pairwise comparisons (AHP). For every pair of criteria, the difference between your two answers becomes a comparison on Saaty's 1-9 scale: equal answers mean equal importance, one point apart means 'moderately more important', and so on up to 'extremely'.</li>
     <li>Your weights. The weights are the principal eigenvector of that 7x7 comparison matrix. They sum to 100% and show how much each criterion counts for you.</li>
@@ -518,6 +518,14 @@ table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;
     <li>Four States/UTs have low data confidence because several indicators are missing: A&amp;N Islands, Chandigarh, Ladakh and Lakshadweep. They can rank high on thin data; use the 'leave out' switch to see the ranking without them.</li>
     <li>Data are at State/UT level. Cities and districts inside a State can differ a lot from the State average.</li>
     <li>The map outlines come from a public India boundary dataset (udit-001/india-maps-data, whose licence is not clearly stated) and are simplified for display. They are for illustration only, not an authoritative map.</li>
+  </ul>
+  <h3>Notes on how the scores were built</h3>
+  <ul>
+    <li>Scaling. Before scaling, each indicator appears to have been capped at its 5th and 95th percentiles, and percentages above 100 at 100. The stored scores are reproduced exactly only when both caps are applied. So a State/UT that is far ahead of the rest gets the same score as one at the 95th percentile.</li>
+    <li>Missing indicators. A criterion score is the average of whichever of its indicators are available. Chandigarh's Housing score of 1.00, for example, rests on one of its three indicators.</li>
+    <li>Imputed value. Lakshadweep has neither Connectivity indicator. Its Connectivity score (0.41) equals the median of the other 35 States/UTs, which suggests it was filled in rather than measured.</li>
+    <li>Percentages above 100. Clean cooking fuel is above 100% in 22 States/UTs and immunisation in 7. The underlying definitions need checking before these figures are read as shares of households or children.</li>
+    <li>Why it matters. If missing indicators counted as the worst score instead of being skipped, the Retiree profile's top 3 would lose Lakshadweep and Ladakh. The 'leave out low-confidence States/UTs' switch shows a similar effect.</li>
   </ul>
   <p class="note">Programming for Data Science (BCSE207L) project.</p>
 </body>

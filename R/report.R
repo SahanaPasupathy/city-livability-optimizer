@@ -24,9 +24,12 @@ table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;
 #' @param source how the answers were produced: "questions", "equal", "edited"
 #'   or "preset: <name>".
 #' @param state_type named vector: State/UT name -> "State" or "UT".
+#' @param shortlist optional States/UTs the user chose to compare.
+#' @param scenario optional compute_recommendation() result for a what-if scenario.
+#' @param pareto optional pareto_front() result over all seven criteria.
 #' @return a character string (HTML).
 build_report_html <- function(rec, X, low_conf = character(0), source = "questions",
-                              state_type = NULL) {
+                              state_type = NULL, shortlist = NULL, scenario = NULL, pareto = NULL) {
   tg <- htmltools::tags
   res <- rec$topsis$results[order(rec$topsis$results$Rank), ]
   w <- rec$ahp$weights
@@ -61,6 +64,54 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
                 paste(sprintf("%s (%.2f)", sim$State, sim$Distance), collapse = ", ")))
   })
   
+  # Optional sections. Their table rows carry a class, so the ranking table is
+  # the only one written as plain <tr><td> rows (analysis/09_report_check.R counts them).
+  sec <- 3
+  next_sec <- function(title) { sec <<- sec + 1; tg$h2(sprintf("%d. %s", sec, title)) }
+  shortlist <- intersect(shortlist, rownames(rec$X))
+  compare_part <- if (length(shortlist) > 0) {
+    htmltools::tagList(next_sec("My comparison"),
+            tg$table(tg$thead(tg$tr(tg$th("Criterion"), lapply(shortlist, tg$th))),
+                     tg$tbody(lapply(wt$Criterion, function(cn) {
+                       tg$tr(class = "cmp", tg$td(sprintf("%s (%.0f%%)", cn, 100 * w[[cn]])),
+                             lapply(shortlist, function(st) tg$td(sprintf("%.2f", rec$X[st, cn]))))
+                     }),
+                     tg$tr(class = "cmp", tg$td(tg$strong("Match score (rank)")),
+                           lapply(shortlist, function(st) {
+                             r <- res[res$State == st, ]
+                             tg$td(tg$strong(sprintf("%.3f (%d)", r$Closeness, r$Rank)))
+                           })))))
+  }
+  scenario_part <- if (!is.null(scenario)) {
+    # The scenario may rank a different set of States/UTs (for example if the
+    # low-confidence switch differs), so the current rank is looked up by name
+    # and shown as "not ranked" where it does not exist.
+    sres <- scenario$topsis$results[order(scenario$topsis$results$Rank), ]
+    top5 <- head(data.frame(Personal_Rank = sres$Rank, State = sres$State,
+                            Baseline_Rank = res$Rank[match(sres$State, res$State)],
+                            stringsAsFactors = FALSE), 5)
+    top5$Baseline_Rank <- ifelse(is.na(top5$Baseline_Rank), "not ranked", as.character(top5$Baseline_Rank))
+    same_set <- setequal(sres$State, res$State)
+    swt <- weights_table(scenario$ahp)
+    htmltools::tagList(next_sec("What-if scenario (hypothetical)"),
+            tg$p(class = "note", "Not your results above: a ranking for other ratings you tried. Weighted most: ",
+                 paste(sprintf("%s %.0f%%", head(swt$Criterion, 3), 100 * head(swt$Weight, 3)), collapse = ", "), "."),
+            tg$table(tg$thead(tg$tr(lapply(c("Scenario rank", "State/UT", "Current rank"), tg$th))),
+                     tg$tbody(lapply(seq_len(nrow(top5)), function(i) {
+                       tg$tr(class = "wi", tg$td(top5$Personal_Rank[i]), tg$td(top5$State[i]), tg$td(top5$Baseline_Rank[i]))
+                     }))),
+            if (!same_set) tg$p(class = "note", sprintf("The scenario ranks %d States/UTs and your results above rank %d, so the two lists cover different places.",
+                                                       nrow(sres), n)))
+  }
+  pareto_part <- if (!is.null(pareto)) {
+    eff <- pareto$State[which(pareto$Efficient)]
+    htmltools::tagList(next_sec("Pareto-efficient places"),
+            tg$p(sprintf("Pareto-efficient across all seven criteria (no other State/UT is at least as good on every criterion and better on one): %d of %d.",
+                         length(eff), nrow(pareto))),
+            tg$p(class = "note", paste(eff, collapse = ", ")),
+            tg$p(class = "note", "Efficiency ignores your weights; it complements, and does not replace, the TOPSIS ranking."))
+  }
+
   rank_rows <- lapply(seq_len(n), function(i) {
     st <- res$State[i]
     tg$tr(tg$td(res$Rank[i]), tg$td(st), tg$td(kind(st)), tg$td(sprintf("%.3f", res$Closeness[i])),
@@ -83,10 +134,13 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
     if (length(rec$excluded) > 0) {
       tg$p(class = "note", "Not ranked (left out by choice): ", paste(rec$excluded, collapse = ", "))
     },
-    tg$h2("4. How this was calculated"),
+    compare_part, scenario_part, pareto_part,
+    next_sec("How this was calculated"),
     tg$ol(lapply(METHOD_STEPS, tg$li)),
-    tg$h2("5. Limits to keep in mind"),
+    next_sec("Limits to keep in mind"),
     tg$ul(lapply(LIMITATIONS, tg$li)),
+    tg$h3("Notes on how the scores were built"),
+    tg$ul(lapply(DATA_NOTES, tg$li)),
     tg$p(class = "note", "Programming for Data Science (BCSE207L) project."))
   # The <head> is written as plain text: htmltools would hoist a <head> tag out
   # of the page, which would drop the title and the styles.

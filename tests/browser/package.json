@@ -1,0 +1,8 @@
+{
+  "name": "city-livability-browser-tests",
+  "private": true,
+  "description": "Drives the real Shiny app in headless Chromium. See tests/browser/run.sh.",
+  "dependencies": {
+    "playwright": "1.59.1"
+  }
+}
