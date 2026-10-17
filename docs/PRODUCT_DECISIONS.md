@@ -54,6 +54,8 @@ The app helps ordinary people in India find States/UTs that **may** suit their p
 
 The functions behind each step are listed in [ARCHITECTURE.md](ARCHITECTURE.md#5-view-model-contracts). How the screens look and are arranged is the UI/UX teammate's decision.
 
+**Status:** this journey is implemented as tested functions, and the current tab-based interface shows parts of it (stability and coverage notes, the edit-and-compare flow, plain trade-offs). The current screens still contain the Trade-offs chart, the Robustness simulation controls and the single-rating What if tab; removing or moving them needs the redesign. The table in [ARCHITECTURE.md](ARCHITECTURE.md#handover-to-the-uiux-teammate) lists what is visible now and what is not.
+
 ## 5. Unresolved research (needs sources or an owner decision)
 
 These cannot be settled from the repository. Nothing was guessed.

@@ -270,3 +270,133 @@ stability_view <- function(answers, X, low_conf = character(0), exclude_low = FA
   }
   list(check = chk, detail = det)
 }
+
+#' Share as a percentage for display: never "0%" for a share that occurred,
+#' never "100%" for one that is not certain ("<1%", ">99%").
+format_share <- function(x) {
+  out <- sprintf("%.0f%%", 100 * x)
+  ifelse(out == "0%" & x > 0, "<1%", ifelse(out == "100%" & x < 1, ">99%", out))
+}
+
+#' Plain-language view of a robustness_analysis() result (advanced view).
+#'
+#' Moves the wording out of the interface so any design can show it. Shares
+#' are shares of simulations under the stated assumption, never probabilities.
+#' @param rb result of robustness_analysis().
+#' @param top_n rows to show (the baseline top 3 is always added).
+#' @return list(top_state, top1_share, top3_share, n_text, headline,
+#'   competitive (sentence or ""), table = data.frame of display strings
+#'   (State, Your_Rank, Match, Rank_1, Top_3, Top_5, Top_10, Simulated_Rank,
+#'   Data_Note), table_note, influence (sentence or ""), assumption,
+#'   interpretation, data_note, not_compared).
+robustness_view <- function(rb, top_n = 10) {
+  s <- rb$summary
+  n_txt <- format(rb$settings$n, big.mark = ",")
+  base_top3 <- rb$baseline$results$State[rb$baseline$results$Rank <= 3]
+  show <- rbind(utils::head(s, top_n), s[s$State %in% setdiff(base_top3, utils::head(s, top_n)$State), ])
+  table <- data.frame(State = show$State, Your_Rank = show$Base_Rank, Match = sprintf("%.3f", show$Base_Closeness),
+                      Rank_1 = format_share(show$Top1_Prop), Top_3 = format_share(show$Top3_Prop),
+                      Top_5 = format_share(show$Top5_Prop), Top_10 = format_share(show$Top10_Prop),
+                      Simulated_Rank = sprintf("%d (%d-%d)", as.integer(show$Rank_Median), as.integer(show$Rank_Q05),
+                                               as.integer(show$Rank_Q95)),
+                      Data_Note = show$Data_Note, row.names = NULL, stringsAsFactors = FALSE)
+  infl <- rb$influence
+  strong <- if (!is.null(infl)) infl[!is.na(infl$Rho_Top_Rank) & abs(infl$Rho_Top_Rank) >= 0.2, ] else NULL
+  influence <- if (!is.null(strong) && nrow(strong) > 0) {
+    paste0("What moves ", rb$baseline$state, " most: ",
+           paste(sprintf("%s (more weight tends to move it %s)", strong$Criterion, ifelse(strong$Rho_Top_Rank > 0, "down", "up")),
+                 collapse = "; "), ". This is a rank correlation across the simulations, not a cause.")
+  } else ""
+  st <- rb$settings
+  assumption <- if (st$preference == "ratings") {
+    sprintf("each of your seven ratings had a %s chance of being one point higher or lower (half each way, kept within 1-5), and the weights were recomputed with AHP",
+            format_share(st$p_change))
+  } else if (st$preference == "dirichlet") {
+    w <- max(rb$baseline$weights)
+    sprintf("your weights were drawn from a Dirichlet distribution centred on your current weights (concentration %s; a weight of %s typically moves by about %.1f percentage points)",
+            st$concentration, format_share(w), 100 * dirichlet_weight_sd(w, st$concentration))
+  } else "your weights were kept fixed"
+  seed_txt <- if (isTRUE(st$exact)) "Every combination was enumerated, so no random numbers were used."
+              else sprintf("Random seed %s gives the same numbers every time.", format(st$seed, scientific = FALSE))
+  list(top_state = rb$baseline$state, top1_share = format_share(rb$baseline$top1_prop),
+       top3_share = format_share(rb$baseline$top3_prop), n_text = n_txt,
+       headline = sprintf("Your #1, %s, stays first in %s and in your top 3 in %s of %s simulations.",
+                          rb$baseline$state, format_share(rb$baseline$top1_prop), format_share(rb$baseline$top3_prop), n_txt),
+       competitive = if (nrow(rb$competitive) > 0) paste0("Also often in your top 3: ", paste(sprintf("%s (%s)", rb$competitive$State,
+                                                          format_share(rb$competitive$Top3_Prop)), collapse = ", "), ".") else "",
+       table = table,
+       table_note = "\"Your rank\" and \"Match score\" are your actual results. The other columns are simulated. Rows are sorted by top-3 share, then by your rank.",
+       influence = influence,
+       assumption = sprintf("Assumption: in each simulation %s. %s", assumption, seed_txt),
+       interpretation = "The shares say how often each place stays near the top under these assumptions; they are not probabilities that a place is the best place to live.",
+       data_note = "Data uncertainty is not modelled: the dataset records no sources, years or error ranges for its indicators (see docs/DATA_AUDIT.md). Places with missing indicators are flagged; their scores are used as stored.",
+       not_compared = if (length(rb$not_comparable)) paste("Not compared (missing score):", paste(rb$not_comparable, collapse = ", "))
+                      else "Every ranked State/UT has all seven criterion scores, so none was left out.")
+}
+
+#' The two criteria a trade-off view should start with: the user's two
+#' highest-weighted criteria (ties keep the criterion order).
+default_tradeoff_axes <- function(w) by_weight(w)[1:2]
+
+#' Plain-language trade-offs between two criteria for the current ranking.
+#'
+#' Built on pareto_front() for the two criteria, but worded without
+#' "Pareto"/"dominated". It ignores the other five criteria and says so.
+#' @param rec compute_recommendation() result; @param x,y two different criteria.
+#' @return list(x, y, frontier = data.frame(State, Rank, Score_X, Score_Y) of
+#'   places no other place beats on both, ordered by the user's rank,
+#'   top_state, top_on_frontier, sentences).
+tradeoff_view <- function(rec, x, y) {
+  if (length(x) != 1 || length(y) != 1 || !all(c(x, y) %in% colnames(rec$X))) {
+    stop("Choose two criteria.", call. = FALSE)
+  }
+  if (x == y) stop("Choose two different criteria.", call. = FALSE)
+  res <- rec$topsis$results
+  front <- pareto_front(rec$X, c(x, y))
+  eff <- front$State[which(front$Efficient)]
+  fr <- data.frame(State = eff, Rank = res$Rank[match(eff, res$State)],
+                   Score_X = unname(rec$X[eff, x]), Score_Y = unname(rec$X[eff, y]), stringsAsFactors = FALSE)
+  fr <- fr[order(fr$Rank, fr$State), ]
+  rownames(fr) <- NULL
+  top <- top_k(rec$topsis, 1)$State
+  s <- sprintf("On %s and %s together, %d of the %d places ranked cannot be beaten on both at once: %s (in your ranking order).",
+               x, y, nrow(fr), nrow(rec$X), paste(fr$State, collapse = ", "))
+  doms <- attr(front, "dominated_by")[[top]]
+  s <- c(s, if (length(doms) == 0) {
+    sprintf("Your #1, %s, is one of them: no other place scores at least as well on both.", top)
+  } else {
+    shown <- utils::head(doms[order(res$Rank[match(doms, res$State)])], 3)
+    sprintf("Your #1, %s, is not: %s score%s at least as well on both %s and %s%s. It ranks first because of your other priorities.",
+            top, paste(shown, collapse = ", "), if (length(shown) == 1) "s" else "", x, y,
+            if (length(doms) > 3) sprintf(" (and %d more)", length(doms) - 3) else "")
+  })
+  if (nrow(fr) >= 2) {
+    bx <- fr$State[which.max(fr$Score_X)]; by <- fr$State[which.max(fr$Score_Y)]
+    if (bx != by) s <- c(s, sprintf("Among them, %s is strongest on %s and %s on %s: gaining on one means giving up some of the other.",
+                                    bx, x, by, y))
+  }
+  s <- c(s, "This view uses only these two criteria; your ranking uses all seven with your weights.")
+  list(x = x, y = y, frontier = fr, top_state = top, top_on_frontier = length(doms) == 0, sentences = s)
+}
+
+#' Data for a preference editor: the current answers with labels, hints and
+#' the resulting weights. Changing several ratings and passing the old and new
+#' answers to scenario_view() gives the before/after explanation.
+#' @param answers named 1-5 answers.
+#' @return data.frame(Criterion, Label, Hint, Rating, Rating_Label, Weight, Percent) in criterion order.
+preferences_view <- function(answers) {
+  a <- setNames(as.integer(answers[CRITERIA]), CRITERIA)
+  w <- run_ahp(a)$weights[CRITERIA]
+  data.frame(Criterion = CRITERIA, Label = QUESTIONS$Label, Hint = QUESTIONS$Hint, Rating = unname(a),
+             Rating_Label = ANSWER_LABELS[a], Weight = unname(w), Percent = sprintf("%.0f%%", 100 * w),
+             row.names = NULL, stringsAsFactors = FALSE)
+}
+
+#' Content for "About the data and limits" (one place for all of it).
+#' @return list(scope, match_note, criteria = CRITERION_INFO, method,
+#'   limitations, data_notes, stability_notes, before_you_move).
+about_view <- function() {
+  list(scope = SCOPE_NOTE, match_note = MATCH_NOTE, criteria = CRITERION_INFO, method = METHOD_STEPS,
+       limitations = LIMITATIONS, data_notes = DATA_NOTES, stability_notes = STABILITY_NOTES,
+       before_you_move = BEFORE_YOU_MOVE)
+}

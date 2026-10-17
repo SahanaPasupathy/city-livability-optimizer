@@ -37,14 +37,9 @@ META       <- load_indicator_metadata(file.path(ROOT, "data", "indicator_metadat
 # data these are the same four places as the dataset's Low_Confidence column.
 LOW_CONF   <- limited_coverage_states(d, META)
 COVERAGE   <- coverage_summary(d, META)
-# Data notes per State/UT (missing indicators, low confidence), shown with the
-# robustness results so places scored on thin data are visible.
-DATA_FLAGS <- vapply(d$State, function(st) {
-  nt <- state_data_notes(d, META, st)
-  paste(c(if (length(nt$criteria_without_data)) paste("no data for", paste(nt$criteria_without_data, collapse = ", ")),
-          if (nt$low_confidence) sprintf("low confidence (%d of 17 indicators missing)", nrow(nt$missing))),
-        collapse = "; ")
-}, character(1))
+# Data notes per State/UT (coverage_summary()), shown with the robustness
+# results so places scored on thin data are visible.
+DATA_FLAGS <- setNames(COVERAGE$Note, COVERAGE$State)
 DATA_FLAGS <- DATA_FLAGS[nzchar(DATA_FLAGS)]
 # Robustness settings offered in the app. "How sure are you?" maps to the chance
 # that each rating is one point off (ratings method) or to the Dirichlet
@@ -169,7 +164,7 @@ ranking_table <- function(rec) {
             tags$td(tags$span(class = "bar", style = sprintf("width:%.0fpx", 90 * res$Closeness[i])),
                     sprintf("%.3f", res$Closeness[i])),
             tags$td(sprintf("%.3f", res$D_plus[i])), tags$td(sprintf("%.3f", res$D_minus[i])),
-            tags$td(if (st %in% LOW_CONF) "low confidence" else ""))
+            tags$td(if (st %in% LOW_CONF) "limited data coverage" else ""))
   })
   div(class = "panel-card",
       tags$input(type = "search", class = "table-search", placeholder = "Search a State/UT...",
@@ -190,7 +185,8 @@ method_panel <- function() {
       tags$h4("How it was calculated"),
       tags$ol(lapply(METHOD_STEPS, tags$li)),
       tags$h4("What each criterion is built from"),
-      tags$ul(lapply(CRITERIA, function(cn) tags$li(tags$b(cn), ": ", CRITERION_INDICATORS[[cn]]))))
+      tags$ul(lapply(CRITERIA, function(cn) tags$li(tags$b(cn), ": ", CRITERION_INDICATORS[[cn]], ". Not measured: ",
+                                                    CRITERION_INFO$Not_Measured[CRITERION_INFO$Criterion == cn]))))
 }
 
 about_panel <- function() {
@@ -199,7 +195,11 @@ about_panel <- function() {
       tags$p("Personalized State and UT Livability Recommendation System. Programming for Data Science (BCSE207L), ",
              "built in R with AHP, TOPSIS and Shiny."),
       tags$h4("Limits to keep in mind"),
-      tags$ul(lapply(LIMITATIONS, tags$li)))
+      tags$ul(lapply(LIMITATIONS, tags$li)),
+      tags$h4("How the scores were built"),
+      tags$ul(lapply(DATA_NOTES, tags$li)),
+      tags$h4("Before you move, check"),
+      tags$ul(lapply(BEFORE_YOU_MOVE, tags$li)))
 }
 
 weights_panel <- function(rec) {
@@ -221,14 +221,15 @@ weights_panel <- function(rec) {
 }
 
 # ---- Panels for the added features (plain layout, original styles) ---------------
-atlas_panel <- function() {
+# Starts with the user's two most important criteria (default_tradeoff_axes()).
+atlas_panel <- function(x = "Safety", y = "Economy") {
   div(class = "panel-card",
       tags$h4("Trade-offs between two criteria"),
-      tags$p(class = "note", "Choose two criteria. Filled points are Pareto-efficient: no other State/UT is at least as good on both and better on one. ",
-             "There is usually no single best place, only different trade-offs; this view ignores your weights, while your ranking uses them."),
+      tags$p(class = "note", "Choose two criteria. Filled points are places that no other place beats on both. ",
+             "There is usually no single best place, only different trade-offs; this view ignores your other priorities, while your ranking uses them."),
       div(class = "toggle-row",
-          selectInput("atlas_x", "Horizontal axis", choices = CRITERIA, selected = "Safety", width = "220px", selectize = FALSE),
-          selectInput("atlas_y", "Vertical axis", choices = CRITERIA, selected = "Economy", width = "220px", selectize = FALSE)),
+          selectInput("atlas_x", "Horizontal axis", choices = CRITERIA, selected = x, width = "220px", selectize = FALSE),
+          selectInput("atlas_y", "Vertical axis", choices = CRITERIA, selected = y, width = "220px", selectize = FALSE)),
       uiOutput("atlas"))
 }
 
@@ -281,7 +282,7 @@ news_panel <- function() {
       uiOutput("news"))
 }
 
-results_screen <- function(exclude_now) {
+results_screen <- function(exclude_now, axes = c("Safety", "Economy")) {
   div(class = "screen",
       div(class = "result-head",
           div(tags$h2("Your livability matches"), uiOutput("mode_note")),
@@ -298,7 +299,7 @@ results_screen <- function(exclude_now) {
                   nav_panel("Map", div(class = "panel-card", uiOutput("map_ui")), uiOutput("map_detail")),
                   nav_panel("Full ranking", uiOutput("ranking")),
                   nav_panel("My weights", uiOutput("weights")),
-                  nav_panel("Trade-offs", atlas_panel()),
+                  nav_panel("Trade-offs", atlas_panel(axes[1], axes[2])),
                   nav_panel("Robustness", robustness_panel()),
                   nav_panel("What if", whatif_panel()),
                   nav_panel("States & UTs", catalogue_panel()),
@@ -334,7 +335,7 @@ server <- function(input, output, session) {
     } else if (step <= nrow(QUESTIONS)) {
       question_screen(step, state$answers)
     } else {
-      results_screen(isolate(state$exclude))
+      results_screen(isolate(state$exclude), isolate(default_tradeoff_axes(run_ahp(state$answers)$weights)))
     }
   })
   
@@ -450,10 +451,14 @@ server <- function(input, output, session) {
     filename = function() paste0("my_livability_report_", format(Sys.Date(), "%Y%m%d"), ".html"),
     content = function(file) {
       sc <- tryCatch(scenario(), error = function(e) NULL)
+      prev <- state$previous
+      chg <- if (!is.null(prev) && !anyNA(prev) && any(prev != state$answers)) {
+        tryCatch(scenario_view(prev, state$answers, X, LOW_CONF, state$exclude), error = function(e) NULL)
+      }
       html <- build_report_html(rec(), X, LOW_CONF, state$source, STATE_TYPE,
                                 shortlist = intersect(input$cmp_pick, rownames(rec()$X)),
                                 scenario = if (!is.null(sc) && length(sc$changed) > 0) sc$scenario else NULL,
-                                d = d, meta = META)
+                                d = d, meta = META, changes = chg)
       writeLines(html, file, useBytes = TRUE)
     },
     contentType = "text/html")
@@ -467,13 +472,10 @@ server <- function(input, output, session) {
     x <- input$atlas_x; y <- input$atlas_y
     req(x %in% CRITERIA, y %in% CRITERIA)
     if (x == y) return(div(class = "note", "Choose two different criteria."))
-    front <- pareto_front(r$X, c(x, y))
-    top1 <- top_k(r$topsis, 1)$State
-    f7 <- pareto_front(r$X)
-    tagList(render_atlas(r$X, r$topsis$results, x, y, LOW_CONF, selected = isolate(selected_state())),
-            tags$p(sprintf("Your #1 match, %s: %s", top1, explain_pareto(front, top1))),
-            tags$p(class = "note", sprintf("Across all seven criteria at once, %d of %d places are Pareto-efficient, which is why two criteria at a time are more informative.",
-                                           sum(f7$Efficient, na.rm = TRUE), nrow(r$X))))
+    # Plain-language summary first (tradeoff_view()), then the chart.
+    tv <- tradeoff_view(r, x, y)
+    tagList(lapply(tv$sentences, tags$p),
+            render_atlas(r$X, r$topsis$results, x, y, LOW_CONF, selected = isolate(selected_state())))
   })
 
   # ---- Robustness (R/robustness.R) ----
@@ -491,57 +493,24 @@ server <- function(input, output, session) {
   output$robustness <- renderUI({
     rb <- robust()
     if (inherits(rb, "robust_error")) return(div(class = "note", "The simulation could not run: ", rb$message))
-    # Never round a share that occurred to "0%", or one that is not certain to "100%".
-    pct <- function(x) {
-      out <- sprintf("%.0f%%", 100 * x)
-      ifelse(out == "0%" & x > 0, "<1%", ifelse(out == "100%" & x < 1, ">99%", out))
-    }
-    n_txt <- format(rb$settings$n, big.mark = ",")
-    s <- rb$summary
-    base_top3 <- rb$baseline$results$State[rb$baseline$results$Rank <= 3]
-    show <- rbind(head(s, 10), s[s$State %in% setdiff(base_top3, head(s, 10)$State), ])
-    rows <- lapply(seq_len(nrow(show)), function(i) {
-      x <- show[i, ]
-      tags$tr(tags$td(tags$b(x$State)), tags$td(x$Base_Rank), tags$td(sprintf("%.3f", x$Base_Closeness)),
-              tags$td(pct(x$Top1_Prop)), tags$td(pct(x$Top3_Prop)), tags$td(pct(x$Top5_Prop)), tags$td(pct(x$Top10_Prop)),
-              tags$td(sprintf("%d (%d-%d)", as.integer(x$Rank_Median), as.integer(x$Rank_Q05), as.integer(x$Rank_Q95))),
-              tags$td(x$Data_Note))
+    v <- robustness_view(rb)      # all wording comes from R/view_models.R
+    rows <- lapply(seq_len(nrow(v$table)), function(i) {
+      x <- v$table[i, ]
+      tags$tr(tags$td(tags$b(x$State)), tags$td(x$Your_Rank), tags$td(x$Match), tags$td(x$Rank_1), tags$td(x$Top_3),
+              tags$td(x$Top_5), tags$td(x$Top_10), tags$td(x$Simulated_Rank), tags$td(x$Data_Note))
     })
-    infl <- rb$influence
-    strong <- if (!is.null(infl)) infl[!is.na(infl$Rho_Top_Rank) & abs(infl$Rho_Top_Rank) >= 0.2, ] else NULL
-    assumption <- if (rb$settings$preference == "ratings") {
-      sprintf("each of your seven ratings had a %s chance of being one point higher or lower (half each way, kept within 1-5), and the weights were recomputed with AHP",
-              pct(rb$settings$p_change))
-    } else {
-      w <- max(rb$baseline$weights)
-      sprintf("your weights were drawn from a Dirichlet distribution centred on your current weights (concentration %s; a weight of %s typically moves by about %.1f percentage points)",
-              rb$settings$concentration, pct(w), 100 * dirichlet_weight_sd(w, rb$settings$concentration))
-    }
     tagList(
       tags$p(HTML(sprintf("Your #1, <b>%s</b>, stays first in %s and in your top 3 in %s of %s simulations.",
-                          htmltools::htmlEscape(rb$baseline$state), pct(rb$baseline$top1_prop), pct(rb$baseline$top3_prop), n_txt))),
-      if (nrow(rb$competitive) > 0) {
-        tags$p(paste0("Also often in your top 3: ", paste(sprintf("%s (%s)", rb$competitive$State, pct(rb$competitive$Top3_Prop)), collapse = ", "), "."))
-      },
+                          htmltools::htmlEscape(v$top_state), v$top1_share, v$top3_share, v$n_text))),
+      if (nzchar(v$competitive)) tags$p(v$competitive),
       div(class = "table-scroll",
           tags$table(class = "rank-table", id = "robust-table",
                      tags$thead(tags$tr(lapply(c("State/UT", "Your rank", "Match score", "Rank 1", "Top 3", "Top 5", "Top 10",
                                                  "Simulated rank: median (5-95%)", "Data note"), tags$th))),
                      tags$tbody(rows))),
-      tags$p(class = "note", "\"Your rank\" and \"Match score\" are your actual TOPSIS results. The other columns are simulated. ",
-             "Rows are sorted by top-3 share, then by your rank."),
-      if (!is.null(strong) && nrow(strong) > 0) {
-        tags$p(paste0("What moves ", rb$baseline$state, " most: ",
-                      paste(sprintf("%s (more weight tends to move it %s)", strong$Criterion, ifelse(strong$Rho_Top_Rank > 0, "down", "up")),
-                            collapse = "; "),
-                      ". This is a rank correlation across the simulations, not a cause."))
-      },
-      tags$ul(class = "note",
-              tags$li(sprintf("Assumption: in each simulation %s. Random seed %s gives the same numbers every time.", assumption,
-                              format(rb$settings$seed, scientific = FALSE))),
-              tags$li("Data uncertainty is not modelled: the dataset records no sources, years or error ranges for its indicators (see docs/DATA_AUDIT.md). Places with missing indicators are flagged above; their scores are used as stored."),
-              tags$li(if (length(rb$not_comparable)) paste("Not compared (missing score):", paste(rb$not_comparable, collapse = ", "))
-                      else "Every ranked State/UT has all seven criterion scores, so none was left out.")))
+      tags$p(class = "note", v$table_note),
+      if (nzchar(v$influence)) tags$p(v$influence),
+      tags$ul(class = "note", tags$li(v$assumption), tags$li(v$interpretation), tags$li(v$data_note), tags$li(v$not_compared)))
   })
   output$rb_csv <- downloadHandler(
     filename = function() "livability_robustness.csv",
@@ -587,19 +556,19 @@ server <- function(input, output, session) {
 
   # ---- States & UTs (R/catalogue.R) ----
   output$catalogue <- renderUI({
-    cat <- catalogue_data(rec(), d)
+    cat <- catalogue_view(rec(), d, META)
     q <- trimws(if (is.null(input$cat_search)) "" else input$cat_search)
     # Case-insensitive plain-text match (grepl ignores ignore.case when fixed = TRUE).
     if (nzchar(q)) cat <- cat[grepl(tolower(q), tolower(cat$State), fixed = TRUE), ]
     if (nrow(cat) == 0) return(div(class = "note", "No State or UT matches that name."))
     div(class = "table-scroll",
         tags$table(class = "rank-table", id = "catalogue-table",
-                   tags$thead(tags$tr(lapply(c("Rank", "State/UT", "Type", "Region", "Match score", "Missing indicators", "Data confidence"), tags$th))),
+                   tags$thead(tags$tr(lapply(c("Rank", "State/UT", "Type", "Region", "Match score", "Missing indicators", "Data coverage"), tags$th))),
                    tags$tbody(lapply(seq_len(nrow(cat)), function(i) {
                      x <- cat[i, ]
                      tags$tr(tags$td(if (is.na(x$Rank)) "not ranked" else x$Rank), tags$td(tags$b(x$State)), tags$td(x$Type),
                              tags$td(x$Region), tags$td(if (is.na(x$Closeness)) "-" else sprintf("%.3f", x$Closeness)),
-                             tags$td(x$Missing_Indicators), tags$td(if (x$Low_Confidence) "low" else "normal"))
+                             tags$td(x$Missing_Indicators), tags$td(if (x$Limited_Coverage) "limited" else if (x$Missing_Indicators > 0) "partial" else "complete"))
                    }))))
   })
   # Details use place_detail() on the current ranking, so positions, the
@@ -638,6 +607,7 @@ server <- function(input, output, session) {
     if (length(states) == 0) return(div(class = "note", "Choose one to three States or UTs."))
     res <- r$topsis$results
     wt <- weights_table(r$ahp)
+    cv <- comparison_view(r, states, d, META, LOW_CONF)   # plain trade-offs and data notes
     tagList(
       div(class = "table-scroll",
           tags$table(class = "rank-table", id = "compare-table",
@@ -652,6 +622,8 @@ server <- function(input, output, session) {
                                x <- res[res$State == st, ]
                                tags$td(tags$b(sprintf("%.3f (%d)", x$Closeness, x$Rank)))
                              }))))),
+      if (length(cv$tradeoffs)) tags$ul(lapply(cv$tradeoffs, tags$li)),
+      tags$ul(class = "note", lapply(cv$notes, tags$li)),
       if (length(left_out)) div(class = "note", paste0(paste(left_out, collapse = ", "), " left out: excluded from the current ranking.")))
   })
 

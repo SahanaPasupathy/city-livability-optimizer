@@ -22,7 +22,9 @@ R/app_text.R    METHOD_STEPS, LIMITATIONS, DATA_NOTES, STABILITY_NOTES, BEFORE_Y
 R/data_quality.R build_criterion_scores(), coverage_table(), coverage_summary(),
                 limited_coverage_states(), indicator_detail(), CRITERION_INFO
 R/view_models.R recommendation_view(), comparison_view(), place_detail(), catalogue_view(),
-                stability_view(), tradeoff_sentences()   (interface contracts, no HTML)
+                stability_view(), robustness_view(), tradeoff_view(), default_tradeoff_axes(),
+                preferences_view(), about_view(), tradeoff_sentences(), format_share()
+                (interface contracts, no HTML)
 R/sensitivity.R dirichlet_weights(), rank_stability(), rank_without() (analysis/10_sensitivity.R)
 R/robustness.R  robustness_analysis()     (Livability Robustness Engine)
 R/pareto.R      pareto_front(), explain_pareto()
@@ -63,7 +65,9 @@ Changes to the original parts of `app/app.R`, none of which change how they look
 
 Every tab reads the same `rec()` (AHP + TOPSIS for the current answers and the low-confidence switch), so ranks and scores agree across tabs and the report. `LOW_CONF` comes from `limited_coverage_states()` (`R/data_quality.R`), not from the stored flag.
 
-Functional changes made to `app/app.R` in the product review (markup and classes kept; see [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md)): new modules sourced; question titles use `QUESTIONS$Label`; verdict names are positions (`Top third` etc., same CSS classes); top cards show "Relative match" to 2 decimals, stability counts and coverage notes; the Top 3 tab shows the close-call/alternatives sentence and the alternative top 3 without limited-coverage places; editing answers keeps the previous answers, `mode_note` says what changed and offers `restore_previous`; the catalogue detail uses `place_detail()` (respects the switch, shows raw values); the report receives `d` and `meta`; texts no longer mention the eigenvector, TOPSIS closeness or "low confidence" in the main views; the News message explains that it is off by default. The robustness settings map "How sure are you?" to `p_change` 0.10 / 0.25 / 0.50 (ratings) or concentration 200 / 50 / 15 (weights); these are assumptions the user chooses, documented in the tab.
+Functional changes made to `app/app.R` in the product review (markup and classes kept; see [PRODUCT_DECISIONS.md](PRODUCT_DECISIONS.md)): new modules sourced; question titles use `QUESTIONS$Label`; verdict names are positions (`Top third` etc., same CSS classes); top cards show "Relative match" to 2 decimals, stability counts and coverage notes; the Top 3 tab shows the close-call/alternatives sentence and the alternative top 3 without limited-coverage places; editing answers keeps the previous answers, `mode_note` says what changed and offers `restore_previous`; the catalogue detail uses `place_detail()` (respects the switch, shows raw values); the report receives `d` and `meta`; texts no longer mention the eigenvector, TOPSIS closeness or "low confidence" in the main views; the News message explains that it is off by default.
+
+Second pass (same rules: content and data sources only, no layout or CSS change): the Trade-offs tab starts on the user's two most important criteria and leads with `tradeoff_view()` sentences before the chart (the "Pareto-efficient" wording and the 7-criteria note are gone); the Robustness tab's wording comes from `robustness_view()` and its data notes from `coverage_summary()`; the comparison under States & UTs adds `comparison_view()` trade-offs and data notes; the catalogue's last column is "Data coverage" (limited / partial / complete); the ranking table says "limited data coverage"; How it works lists what each criterion does not measure; About and limits adds `DATA_NOTES` and `BEFORE_YOU_MOVE`; the report includes what changed since the previous answers. The robustness settings map "How sure are you?" to `p_change` 0.10 / 0.25 / 0.50 (ratings) or concentration 200 / 50 / 15 (weights); these are assumptions the user chooses, documented in the tab.
 
 ### Handover: presentation versus calculations
 
@@ -124,7 +128,12 @@ ans  <- c(Education = 5, Safety = 5, Health = 5, Housing = 3, Economy = 3, Envir
 | `stability_view(ans, X, LOW, exclude_low, k = 3, detail = FALSE)` | answers | `check` (as above); `detail` = NULL or `summary`, `competitive`, `assumption`, `interpretation` (exact enumeration, no seed) | as above | `robustness_analysis(exact = TRUE)` |
 | `place_detail(rec, d, META, state, LOW)` | one place name | `state`, `type`, `region`, `in_ranking`, `rank`, `n_ranked`, `relative_match`, `limited_coverage`, `coverage_note`; `criteria` (Criterion, Label, Score, Position, Position_Group, Available, Total, Support); `indicators` (evidence with Raw, Unit_Display, Value_Text, Status, Provenance, Evidence); `similar`; `similar_note`; `standing` | unknown name | `pareto_front()`, `similar_states()`, `indicator_detail()` |
 | `catalogue_view(rec, d, META)` | the current recommendation | `catalogue_data()` columns plus Limited_Coverage, Coverage_Note, Imputed | — | `catalogue_data()`, `coverage_summary()` |
-| `build_report_html(rec, X, LOW, source, state_type, shortlist, scenario, d, META)` | as before (the `pareto` argument was removed) | one HTML string | — | the functions above |
+| `robustness_view(rb, top_n = 10)` | a `robustness_analysis()` result | `top_state`, `top1_share`, `top3_share`, `n_text`, `headline`, `competitive`, `table` (State, Your_Rank, Match, Rank_1, Top_3, Top_5, Top_10, Simulated_Rank, Data_Note as display strings), `table_note`, `influence`, `assumption`, `interpretation`, `data_note`, `not_compared` | — | `format_share()` |
+| `tradeoff_view(rec, x, y)` | two different criteria | `x`, `y`, `frontier` (State, Rank, Score_X, Score_Y: places no other place beats on both, in the user's rank order), `top_state`, `top_on_frontier`, `sentences` | same or unknown criteria | `pareto_front()` |
+| `default_tradeoff_axes(w)` | weights | the two highest-weighted criteria | — | `by_weight()` |
+| `preferences_view(ans)` | answers | Criterion, Label, Hint, Rating, Rating_Label, Weight, Percent (criterion order) | invalid answers | `run_ahp()` |
+| `about_view()` | — | `scope`, `match_note`, `criteria` (`CRITERION_INFO`: Criterion, Label, Measures, Not_Measured), `method`, `limitations`, `data_notes`, `stability_notes`, `before_you_move` | — | `R/app_text.R` |
+| `build_report_html(rec, X, LOW, source, state_type, shortlist, scenario, d, META, changes)` | as before (the `pareto` argument was removed); `changes` = a `scenario_view()` result for "what changed since my previous answers" | one HTML string | — | the functions above |
 
 Examples:
 
@@ -137,6 +146,10 @@ comparison_view(v$rec, c("Himachal Pradesh", "Kerala"), d, META, LOW)$tradeoffs[
 # "There is no overall winner: Himachal Pradesh is stronger on Safety, Housing; Kerala is stronger on ..."
 scenario_view(ans, c(Safety = 2, Environment = 5), X, LOW)$sentences
 place_detail(v$rec, d, META, "Lakshadweep", LOW)$criteria   # Connectivity: Support "imputed"
+tradeoff_view(v$rec, "Education", "Safety")$sentences         # default axes for this user
+preferences_view(ans)                                         # editor rows: current ratings and weights
+rb <- robustness_analysis(v$rec$X, answers = ans, preference = "ratings", exact = TRUE, p_change = 0.25)
+robustness_view(rb)$headline                                  # no seed or simulation count needed
 ```
 
 Field meanings that must not be presented differently:
@@ -149,10 +162,24 @@ Field meanings that must not be presented differently:
 
 ### Handover to the UI/UX teammate
 
+**Status of each product change** (17 October 2026):
+
+| Change | Calculation / contract | Visible in the current interface | Needs the redesign |
+|---|---|---|---|
+| Plain stability instead of simulation controls | `stability_check()`, `stability_view()`, `robustness_view()` | Top 3 shows the counts and close-call note; the Robustness tab's wording is plain | Remove the method, "how sure", simulation-count and seed controls from the main journey. Either drop the Robustness tab or make it an "Advanced" view that calls `stability_view(..., detail = TRUE)` (exact enumeration, no seed) and renders `robustness_view()`. |
+| What-if merged with editing, several changes | `scenario_view()`, `preferences_view()` | "Edit my answers" → what changed (several answers) and "Go back"; report section | Replace the single-rating What if tab with an inline editor of all seven ratings (`preferences_view()` rows); on change, call `scenario_view(previous, new, ...)` and show `sentences` and `moves`; then retire the What if tab (`whatif_panel()`, `output$whatif`, `scenario()`) after moving the report's `scenario` argument to the editor's result. |
+| Useful trade-offs instead of a technical plot first | `comparison_view()$tradeoffs`, `tradeoff_view()`, `place_detail()$standing` | Comparison shows trade-off sentences; Trade-offs tab leads with sentences and starts on the user's top two criteria | Make the comparison the main trade-off experience (show `comparison_view()$criteria` by weight with `indicators` raw values); move the scatter plot (`render_atlas()`) to an optional/advanced view. |
+| Data coverage and limits clear | `coverage_summary()`, `indicator_evidence()`, `about_view()` | Coverage notes on top cards, details, comparison, catalogue, robustness; About and limits shows data notes and the checklist | Show `Support` with each score, `Provenance` and `Value_Text` with each indicator, and `MATCH_NOTE`/`SCOPE_NOTE` near results, in your own design. |
+| Consistent scoring and exclusion | every view model uses `rec$X` | Verified by `analysis/12_server_check.R` (25 checks) | Keep passing one `rec` (from `compute_recommendation()` with the switch) to every view model. |
+| News off by default | `news_enabled()` | Tab says it is off | Decide whether the tab stays at all. |
+| Medals, 3-decimal numbers in Full ranking (D+/D-) | — | unchanged (markup) | Drop D+/D- columns or move Full ranking to Advanced; reconsider medals for close calls (`stability_check()$close_call`). |
+
+Rules for the redesign:
+
 - Call the functions above from the server; do not read `rec()` internals or compute scores in the UI. Their field names are the contract; changes to them go through the tests.
 - Presentation is yours: layout, tabs, styling, wording of headings. Keep the meaning of the fields above and the strings in section 4 (or update the named checks together).
-- The current `app/app.R` is the original interface with targeted functional edits (section 2). If your redesign replaces it, port these behaviours: `LOW_CONF` from `limited_coverage_states()`, the stability and alternative-top-3 notes, the what-changed/restore flow, `place_detail()` for details, `d`/`meta` passed to the report, News off by default.
-- `tests/browser/smoke.js` checks the original markup (class names such as `.tc-name`, `.match-label`, `.cr-box`) and asserts that redesigned elements are absent; replace it with checks on stable hooks when your redesign lands.
+- If your redesign replaces `app/app.R`, port these behaviours: `LOW_CONF` from `limited_coverage_states()`; the stability and alternative-top-3 notes; the what-changed/restore flow and passing `changes` to the report; `place_detail()` for details; `comparison_view()` trade-offs; `tradeoff_view()` with `default_tradeoff_axes()`; `robustness_view()`; `d`/`meta` passed to the report; News off by default.
+- Update the input/output names in `analysis/12_server_check.R` and replace `tests/browser/smoke.js` (it checks the original markup: `.tc-name`, `.match-label`, `.cr-box`, and asserts that redesigned elements are absent) with checks on stable hooks.
 
 ## 6. Checks without R
 

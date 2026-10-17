@@ -77,9 +77,9 @@ jobs:
         run: |
           Rscript -e 'res <- as.data.frame(testthat::test_dir("tests/testthat", reporter = "summary", stop_on_failure = FALSE)); cat(sprintf("\n%d tests, %d expectations passed, %d failed, %d errors\n", nrow(res), sum(res$passed), sum(res$failed), sum(res$error))); if (sum(res$failed) + sum(res$error) > 0) quit(status = 1)'
 
-      - name: Data, map, app and report check scripts
+      - name: Data, map, app, report and server check scripts
         run: |
-          for s in 01_audit 07_map 08_app_check 09_report_check; do
+          for s in 01_audit 07_map 08_app_check 09_report_check 12_server_check; do
             Rscript -e "source('analysis/$s.R')" | tee "/tmp/$s.log"
             if grep -q '\[FAIL\]' "/tmp/$s.log"; then echo "::error::$s has failing checks"; exit 1; fi
           done

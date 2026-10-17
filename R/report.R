@@ -33,12 +33,14 @@ table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;
 #' @param state_type named vector: State/UT name -> "State" or "UT".
 #' @param shortlist optional States/UTs the user chose to compare.
 #' @param scenario optional compute_recommendation() result for a what-if scenario.
+#' @param changes optional scenario_view() result comparing the user's previous
+#'   answers with the current ones (the "edit my answers" what-if).
 #' @param d,meta optional dataset and indicator metadata; when given, the report
 #'   adds indicator evidence, coverage notes and trade-off sentences.
 #' @return a character string (HTML).
 build_report_html <- function(rec, X, low_conf = character(0), source = "questions",
                               state_type = NULL, shortlist = NULL, scenario = NULL,
-                              d = NULL, meta = NULL) {
+                              d = NULL, meta = NULL, changes = NULL) {
   tg <- htmltools::tags
   res <- rec$topsis$results[order(rec$topsis$results$Rank), ]
   w <- rec$ahp$weights
@@ -129,6 +131,16 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
             if (!same_set) tg$p(class = "note", sprintf("The scenario ranks %d States/UTs and your results above rank %d, so the two lists cover different places.",
                                                        nrow(sres), n)))
   }
+  changes_part <- if (!is.null(changes) && nrow(changes$changed) > 0) {
+    htmltools::tagList(next_sec("What changed since my previous answers"),
+            tg$ul(lapply(changes$sentences, tg$li)),
+            tg$table(tg$thead(tg$tr(lapply(c("State/UT", "Before", "Now", "Change"), tg$th))),
+                     tg$tbody(lapply(seq_len(nrow(changes$moves)), function(i) {
+                       m <- changes$moves[i, ]
+                       tg$tr(class = "chg", tg$td(m$State), tg$td(m$Before), tg$td(m$After),
+                             tg$td(if (m$Change > 0) sprintf("up %d", m$Change) else if (m$Change < 0) sprintf("down %d", -m$Change) else "no change"))
+                     }))))
+  }
   named <- unique(c(top$State, shortlist))
   notes_part <- if (with_data) {
     nn <- cs[cs$State %in% named & nzchar(cs$Note), ]
@@ -163,7 +175,7 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
     if (length(rec$excluded) > 0) {
       tg$p(class = "note", "Not ranked (left out by choice): ", paste(rec$excluded, collapse = ", "))
     },
-    compare_part, scenario_part, notes_part,
+    changes_part, compare_part, scenario_part, notes_part,
     next_sec("How this was calculated"),
     tg$ol(lapply(METHOD_STEPS, tg$li)),
     next_sec("Limits to keep in mind"),

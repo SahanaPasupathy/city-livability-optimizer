@@ -66,8 +66,11 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   const tab = async (name) => { await p.click(`#result_tabs .nav-link >> text="${name}"`); await idle(p); };
   const eff = () => p.$$eval('.atlas-pt.is-efficient', e => e.map(x => x.getAttribute('data-state')).sort().join('|'));
   await tab('Trade-offs');
+  ok('trade-offs: starts on your two most important criteria (Health, Education)', (await p.inputValue('#atlas_x')) === 'Health' && (await p.inputValue('#atlas_y')) === 'Education');
+  await p.selectOption('#atlas_x', 'Safety'); await p.selectOption('#atlas_y', 'Economy'); await idle(p);
   ok('trade-offs: Safety vs Economy efficient set matches R', (await eff()) === 'Chandigarh|Ladakh|Lakshadweep|Nagaland|Tripura');
-  ok('trade-offs: 36 points and an explanation for your #1 (Delhi)', (await p.$$('.atlas-pt')).length === 36 && (await p.textContent('#atlas')).includes('Your #1 match, Delhi'));
+  ok('trade-offs: 36 points and a plain explanation for your #1 (Delhi)', (await p.$$('.atlas-pt')).length === 36 && (await p.textContent('#atlas')).includes('Your #1, Delhi') &&
+     !(await p.textContent('#atlas')).includes('Pareto'));
   await p.selectOption('#atlas_x', 'Health'); await p.selectOption('#atlas_y', 'Education'); await idle(p);
   ok('trade-offs: Health vs Education efficient set matches R', (await eff()) === 'Delhi|Kerala|Lakshadweep|Maharashtra|Punjab');
   await p.selectOption('#atlas_y', 'Health'); await idle(p);
@@ -83,7 +86,7 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   ok('robustness: table order and top-3 shares match R (Chandigarh 88%, Kerala 77%, Delhi 65%)', rrow.slice(0, 3).map(r => r[0] + ' ' + r[4]).join('|') === 'Chandigarh 88%|Kerala 77%|Delhi 65%');
   const delhi = rrow.find(r => r[0] === 'Delhi');
   ok('robustness: baseline rank and score shown apart from simulated rank (Delhi 1, 0.791, 2 (1-10))', delhi[1] === '1' && delhi[2] === '0.791' && delhi[7] === '2 (1-10)', delhi.join(' / '));
-  ok('robustness: data notes and assumptions shown', (await p.textContent('#robust-table')).includes('low confidence') && (await p.textContent('#robustness')).includes('Data uncertainty is not modelled'));
+  ok('robustness: data notes and assumptions shown', (await p.textContent('#robust-table')).includes('Limited data coverage') && (await p.textContent('#robustness')).includes('Data uncertainty is not modelled'));
   // The shown top-3 shares must agree with the downloaded CSV: "0%" only when
   // no simulation had the place in the top 3, "100%" only when all did.
   const sharesMatchCsv = async (label) => {
