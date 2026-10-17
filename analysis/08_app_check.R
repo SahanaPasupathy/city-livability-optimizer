@@ -61,8 +61,8 @@ check("Weights table is sorted largest first and sums to 1",
       !is.unsorted(rev(round(wt$Weight, 12))) && abs(sum(wt$Weight) - 1) < 1e-12)
 check("Equally rated criteria keep the criterion order (no floating-point tie noise)",
       identical(wt$Criterion[1:3], c("Education", "Safety", "Health")))
-check("Consistency message reports 'consistent' for a normal set of answers",
-      grepl("consistent", consistency_message(fam$ahp)))
+check("Weights message explains magnification and does not quote the consistency ratio",
+      grepl("times as much", consistency_message(fam$ahp)) && !grepl("ratio", consistency_message(fam$ahp)))
 
 # ---- 3. Leaving out low-confidence States/UTs ---------------------------------
 cat("\n--- 3. Low-confidence switch ---\n")
@@ -92,13 +92,13 @@ check("Sentence quotes the weight percentage and the score",
       grepl("26%", pb$Sentence[1], fixed = TRUE) && grepl("0.83/1.00", pb$Sentence[1], fixed = TRUE))
 safety_first <- compute_recommendation(setNames(as.integer(c(1, 5, 1, 1, 1, 1, 1)), CRITERIA), X, low_conf)
 pb_delhi <- priority_breakdown(safety_first$topsis, safety_first$ahp$weights, "Delhi", 1)
-check("A weak score on a top priority is reported as 'Falls short' (Delhi, safety first)",
-      pb_delhi$Verdict == "Falls short" && grepl("falls short", pb_delhi$Sentence))
-check("A strong score is reported as 'Strong match' (Himachal Pradesh, education)",
-      pb$Verdict[pb$Criterion == "Education"] == "Strong match")
+check("A weak position on a top priority is reported as 'Bottom third' (Delhi, safety first)",
+      pb_delhi$Verdict == "Bottom third" && grepl("bottom third", pb_delhi$Sentence))
+check("A strong position is reported as 'Top third' (Himachal Pradesh, education)",
+      pb$Verdict[pb$Criterion == "Education"] == "Top third")
 yp <- compute_recommendation(setNames(as.integer(PERSONAS[["Young Professional"]]), CRITERIA), X, low_conf)
 check("Shortfall sentence names Safety for Delhi (its weakest criterion)",
-      grepl("furthest short: Safety", shortfall_sentence(yp$topsis, yp$ahp$weights, "Delhi")))
+      grepl("furthest short for you: Safety", shortfall_sentence(yp$topsis, yp$ahp$weights, "Delhi")))
 check("The explanation changes when the user's answers change",
       !identical(priority_breakdown(fam$topsis, fam$ahp$weights, "Chandigarh")$Sentence,
                  priority_breakdown(yp$topsis, yp$ahp$weights, "Chandigarh")$Sentence))

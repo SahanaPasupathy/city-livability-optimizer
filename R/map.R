@@ -34,13 +34,19 @@ load_map_paths <- function(path = MAP_PATH) {
 }
 
 #' Map closeness values onto the light-to-dark colour ramp.
-#' The lowest closeness gets the lightest colour and the highest the darkest,
-#' so the colours always use the full range for the current user.
+#'
+#' The scale is FIXED at 0-1 (closeness is always in [0, 1]), so equal colour
+#' differences mean equal differences in match and two users' maps are
+#' comparable. (The earlier version stretched the ramp to each user's lowest
+#' and highest value, which made small differences look large.) Higher
+#' closeness is never lighter. `limits = NULL` restores the stretched scale.
 #' @param closeness numeric vector.
+#' @param limits the closeness values mapped to the lightest and darkest colour.
 #' @return character vector of hex colours.
-closeness_colours <- function(closeness) {
-  rng <- range(closeness)
+closeness_colours <- function(closeness, limits = c(0, 1)) {
+  rng <- if (is.null(limits)) range(closeness) else limits
   t <- if (diff(rng) == 0) rep(0.5, length(closeness)) else (closeness - rng[1]) / diff(rng)
+  t <- pmin(pmax(t, 0), 1)
   ramp <- grDevices::colorRamp(MAP_RAMP, space = "Lab")
   rgb <- ramp(t)
   grDevices::rgb(rgb[, 1], rgb[, 2], rgb[, 3], maxColorValue = 255)
@@ -51,8 +57,8 @@ map_tooltip <- function(state, rank, closeness, scores, low_confidence) {
   bars <- paste(sprintf(
     "<div class='ilm-row'><span>%s</span><span class='ilm-bar'><i style='width:%.0f%%'></i></span><b>%.2f</b></div>",
     names(scores), 100 * scores, scores), collapse = "")
-  warn <- if (low_confidence) "<div class='ilm-warn'>Low data confidence</div>" else ""
-  sprintf("<div class='ilm-title'>%s <em>#%d</em></div><div class='ilm-sub'>Closeness %.3f</div>%s%s",
+  warn <- if (low_confidence) "<div class='ilm-warn'>Limited data coverage</div>" else ""
+  sprintf("<div class='ilm-title'>%s <em>#%d</em></div><div class='ilm-sub'>Relative match %.2f</div>%s%s",
           htmltools::htmlEscape(state), rank, closeness, bars, warn)
 }
 
@@ -189,12 +195,12 @@ render_india_map <- function(results, X, low_confidence = character(0),
   legend <- htmltools::tags$div(
     class = "ilm-legend",
     htmltools::tags$div(class = "ilm-ends",
-                        htmltools::tags$span(sprintf("Weaker match (%.2f)", rng[1])),
-                        htmltools::tags$span(sprintf("Better match (%.2f)", rng[2]))),
+                        htmltools::tags$span("Weaker match (0)"),
+                        htmltools::tags$span("Better match (1)")),
     htmltools::tags$div(class = "ilm-grad", style = paste0("background:", grad)),
     htmltools::tags$div(class = "ilm-note", paste0(
-      "Colour = TOPSIS closeness for YOUR priorities (darker = better). Circles mark very small ",
-      "States/UTs; numbered badges mark your top 3; a dashed grey outline means low data confidence",
+      sprintf("Colour = relative match for YOUR priorities on a fixed 0-1 scale (darker = better; this ranking runs from %.2f to %.2f). ", rng[1], rng[2]),
+      "Circles mark very small States/UTs; numbered badges mark your top 3; a dashed grey outline means limited data coverage",
       if (any(!included)) "; plain grey means excluded from this ranking" else "",
       ". Hover for scores, click to select.")))
   htmltools::tags$div(class = "ilm-map", svg, legend)

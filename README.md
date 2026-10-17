@@ -5,7 +5,9 @@ Programming for Data Science (BCSE207L), built in R.
 
 **Team:** Saipriya R (24BDS1100) and Sahana Pasupathy (24BDS1049)
 
-A person answers seven short questions about what matters to them. The system turns those answers into personal weights (AHP), ranks all 36 Indian States and Union Territories for them (TOPSIS), shows the top 3 with a plain-language explanation, and lets them explore the result on an interactive map of India.
+A person answers seven short questions about what matters to them. The system turns those answers into personal weights (AHP), ranks all 36 Indian States and Union Territories for them (TOPSIS), shows the top 3 with a plain-language explanation backed by the indicator values, says how stable the result is and where the data are thin, and lets them compare places, change their answers and explore the result on an interactive map of India.
+
+It compares **State/UT-level indicators only**. It cannot tell anyone about rent, salaries, job openings, the cost of living, public transport, distance to hospitals, personal safety or daily life in a particular city.
 
 ---
 
@@ -32,8 +34,9 @@ Livability rankings usually give one fixed list. But a young professional, a fam
 | Connectivity | Villages with 3G/4G, electric vehicles per lakh people |
 
 - Each criterion score runs from **0 to 1 with higher = better**, so different units can be compared. The stored scores were built as follows (reconstructed by `tools/audit_data.py`, which reproduces 251 of the 252 stored values to 4 decimals): percentages capped at 100, each indicator capped at its 5th and 95th percentiles and min-max scaled with its direction, the indicators of a criterion averaged (missing ones skipped), and the result rescaled to 0-1.
-- 4 States/UTs are flagged **low data confidence** because 3 or more of their 17 indicators are missing: A&N Islands, Chandigarh, Ladakh, Lakshadweep.
-- Lakshadweep has no Connectivity indicator; its Connectivity score equals the median of the other States/UTs, so it appears to be imputed.
+- `R/data_quality.R` rebuilds all 252 stored scores from the raw indicators with this rule (tested) and records for every value whether it was observed, missing, capped or imputed, and for every criterion score how many of its indicators were available (`full`, `partial`, `thin` or `imputed`).
+- 4 States/UTs have **limited data coverage** (3 or more of their 17 indicators missing, or a criterion built from fewer than half of its indicators): A&N Islands, Chandigarh, Ladakh, Lakshadweep. They stay visible and flagged; a switch leaves them out. Five more places have 1-2 missing indicators and get per-criterion notes.
+- Lakshadweep has no Connectivity indicator; its Connectivity score is the median of the other States/UTs (imputed). It is kept, and shown as estimated, not measured.
 - Indicator units, directions, sources and reporting periods are listed in [`data/indicator_metadata.csv`](data/indicator_metadata.csv). **Sources and years are not recorded in the repository for any indicator.** The full data-quality audit is in [`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md).
 
 ## 3. Method
@@ -47,8 +50,9 @@ Livability rankings usually give one fixed list. But a young professional, a fam
    - The weighted scores are v = w x score.
    - The ideal solution takes the best value on each criterion and the worst solution takes the lowest.
    - Closeness = D- / (D+ + D-), from 0 (worst) to 1 (ideal).
-4. **Explanation:** "Why this fits you" compares a State's scores on the user's three heaviest criteria with the other States (Strong match is 0.70 or more, Moderate 0.40 to 0.70, Falls short below 0.40), and names where it falls furthest short.
-5. **Similar States/UTs:** Euclidean distance on the 7 scores with equal importance. This is kept separate from the personalised ranking.
+4. **Explanation:** "Why this fits you" says where a State/UT stands among the places ranked (top, middle or bottom third) on the user's three heaviest criteria, quotes the underlying indicator values, and names where it falls furthest short.
+5. **Stability check:** each answer is moved one point up and down, one at a time (up to 14 variants), and the app counts how often the top places stay on top. This is a count, not a probability.
+6. **Similar States/UTs:** Euclidean distance on the 7 scores with equal importance. This is kept separate from the personalised ranking.
 
 ## 4. Results (demonstration personas)
 
@@ -77,17 +81,19 @@ How much do the recommendations change if the weights or the method change a lit
 
 ## 5. The Shiny app
 
-Features: flashcard questions, three presets (Young Professional, Family, Retiree), a skip option (equal weights), the top 3 with "Why this fits you", an interactive India map coloured by closeness, a searchable and sortable full ranking, a weights panel with the consistency check, "How it works" and "About and limits" tabs, and a downloadable personal report (HTML). The welcome screen shows the project logo (`app/www/img/logo.svg`), which is also the browser-tab icon.
+Features: flashcard questions whose hints say what is and is not measured, three example presets (Young Professional, Family, Retiree), a skip option (equal weights), the top 3 with "Why this fits you", the relative match, stability counts and data-coverage notes, the alternative top 3 without limited-coverage places, an interactive India map coloured on a fixed 0-1 scale, a searchable and sortable full ranking, a weights panel that explains how strongly answers are magnified, "How it works" and "About and limits" tabs, and a downloadable personal report (HTML). **Editing your answers is the what-if workflow:** the results then say what changed (several answers at once) and offer to go back. The welcome screen shows the project logo (`app/www/img/logo.svg`), which is also the browser-tab icon. Product and data decisions are recorded in [`docs/PRODUCT_DECISIONS.md`](docs/PRODUCT_DECISIONS.md).
 
 The interface is the original one; UI/UX work is being taken over by another team member. Features developed since are reachable through plain extra tabs on the results screen, in the original style:
 
 - **Trade-offs:** choose two criteria; a scatter plot marks the Pareto-efficient States/UTs (no other place is at least as good on both and better on one) and explains where your #1 stands (`R/pareto.R`, `R/atlas.R`).
 - **Robustness:** re-runs your ranking under slightly different ratings or weights (simulation count and seed selectable) and shows, next to your actual rank and match score, how often each place is ranked 1st or in the top 3, 5 and 10, its median simulated rank with a 5-95% range, competitive alternatives and data notes; the full table downloads as CSV (`R/robustness.R`).
 - **What if:** change one rating and compare the new ranking with yours (`R/scenario.R`).
-- **States & UTs:** all 36 with search, current rank and score, data notes (missing indicators) per State/UT, and a comparison of up to three (`R/catalogue.R`).
-- **News:** a few recent livability headlines from public RSS feeds (The Hindu, Mongabay India), loaded in the background; external news, never used in the rankings (`R/news.R`). `LIVABILITY_NEWS=off` switches it off.
+- **States & UTs:** all 36 with search, current rank and score, and a comparison of up to three; the details show relative scores with positions among the places ranked, coverage, and the original indicator values with units, status and provenance (`R/catalogue.R`, `place_detail()`).
+- **News:** headlines from public RSS feeds (The Hindu, Mongabay India). **Off by default** since the product review (not about particular places, not used in the rankings, and it started a background process and wrote a cache file); `LIVABILITY_NEWS=on` switches it on (`R/news.R`).
 
-The downloaded report then also includes the comparison, the what-if scenario (if one is set) and the Pareto-efficient places. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how presentation and calculations are separated.
+The interface itself belongs to the UI/UX teammate. `R/view_models.R` provides tested, Shiny-free functions for the redesigned screens (shortlist, comparison, place details, scenario, stability, catalogue); see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#5-view-model-contracts).
+
+The downloaded report summarises the same results: reasons with indicator evidence, stability, data notes for the places it names, the comparison with plain trade-offs, the what-if scenario (if one is set), the limits and a "before you move" checklist. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how presentation and calculations are separated.
 
 ### How to run it
 
@@ -130,7 +136,7 @@ Source the scripts in `analysis/` in order from the project root, for example `s
 
 ### Automated tests
 
-**R tests** (need R). Run `source("analysis/11_run_tests.R")` (needs `install.packages("testthat")`). The 67 tests (391 expectations) cover:
+**R tests** (need R). Run `source("analysis/11_run_tests.R")` (needs `install.packages("testthat")`). The 85 tests (526 expectations) cover:
 
 - AHP: the difference rule, a perfectly consistent matrix, Saaty's textbook 3x3 example and contradictory answers.
 - TOPSIS: a small case checked by hand and rejection of bad inputs.
@@ -140,7 +146,9 @@ Source the scripts in `analysis/` in order from the project root, for example `s
 - Livability Robustness Engine: reproduces the baseline ranking exactly when nothing is perturbed, matches `rank_stability()` in weights mode, reproducible seeds, top-3/5/10 counts and rank quantiles recomputed from the simulated ranks, exact enumeration of all rating shifts with Monte Carlo agreeing within sampling error, ties, missing scores, documented data-uncertainty bounds only, invalid inputs and zero weights.
 - What-if scenarios: equal to a fresh run of the engine, rank changes, a new #1, determinism, invalid ratings, and the report with a scenario that ranks a different set of States/UTs.
 - The Trade-off Atlas drawing (36 points, the real Pareto set, works without the stylesheet, follows the low-confidence switch).
-- Catalogue data, per-State data notes and the report's optional sections agree with the ranking; news parsing (two date formats, unsafe links dropped), filtering, caching and switching off; news retrieval from a local web server (good feed, 404, malformed XML, unreachable host) and the background refresh with no duplicate processes.
+- The score pipeline (all 252 stored scores rebuilt, the imputed Lakshadweep score, capping, direction, ties, the coverage levels and the limited-coverage rule) and honest metadata (no invented sources).
+- The view models and the stability check (counts recomputed by hand, determinism, several changed answers, plain trade-offs, input errors) and that the shortlist, comparison, details, catalogue, stability, robustness and report use the same included/excluded places.
+- Catalogue data, per-State data notes and the report's sections agree with the ranking; news parsing (two date formats, unsafe links dropped), filtering, caching and switching off; news retrieval from a local web server (good feed, 404, malformed XML, unreachable host) and the background refresh with no duplicate processes.
 
 Breaking the code on purpose makes tests fail, so they do catch mistakes. The check scripts `analysis/04`-`10` add further PASS/FAIL checks, including that `app/app.R` loads (`08_app_check.R`) and that the report is complete (`09_report_check.R`).
 
@@ -165,15 +173,15 @@ A GitHub Actions workflow (`.github/workflows/checks.yml`) is set up to run thes
 
 ### Testing status
 
-Last full run: 17 October 2026, R 4.6.1 on macOS (arm64), after the added features were connected to the original interface.
+Last full run: 17 October 2026, R 4.6.1 on macOS (arm64), after the product review changes.
 
 | Area | Status |
 |---|---|
-| Calculations (AHP, TOPSIS, Pareto, robustness, what-if, explanations) | 67 testthat tests (391 expectations) pass; `analysis/01`-`10` checks pass. |
-| Shiny app (`app/app.R`, `app/www/`) | Started and driven in headless Chromium: 47 smoke checks pass (`tests/browser/`), including numbers compared with R. `analysis/08_app_check.R`: 29/29. |
-| Map and report (`R/map.R`, `R/report.R`) | `analysis/07_map.R` 15/15, `09_report_check.R` 16/16; `outputs/maps/` and `outputs/reports/` regenerated and inspected. |
-| Data, documentation, committed results | Python audit and repository checks pass (see [`docs/TESTING.md`](docs/TESTING.md)). |
-| Not tested | Visual design and accessibility of the interface (being handed over), browsers other than Chromium, deployment to a Shiny server. The CI workflow has not run on GitHub yet. |
+| Calculations, data pipeline and view models | 85 testthat tests (526 expectations) pass; `analysis/01` passes (`02`-`06` and `10` were not re-run: they only rewrite figures and tables, and no score changed). |
+| Shiny app (`app/app.R`, `app/www/`) | `analysis/08_app_check.R` 29/29; the server logic was driven with `shiny::testServer` (17 checks: questionnaire, top 3, what-changed/restore, details with the switch, report, all tabs); the app starts and serves over HTTP. The browser smoke test was updated but **not run** (Chromium for Playwright is not installed on this machine). |
+| Map and report (`R/map.R`, `R/report.R`) | `analysis/07_map.R` 15/15, `09_report_check.R` 17/17; `outputs/maps/` and `outputs/reports/` regenerated. |
+| Data, documentation, committed results | Python audit (19/19 structural), repository checks (18/18) and 25 Python unit tests pass (see [`docs/TESTING.md`](docs/TESTING.md)). |
+| Not tested | Visual design and accessibility (UI/UX teammate), the browser smoke test (see above), deployment to a Shiny server. Neither CI job has run on GitHub yet. |
 
 ## 6. Project structure
 
@@ -183,7 +191,7 @@ app/                 Shiny app (app.R; www/style.css, www/table.js,
 R/                   Tested functions: common, ahp, topsis, similarity,
                      explain, compare, map, app_logic, app_text, report,
                      pareto, atlas, catalogue, news, robustness, scenario,
-                     sensitivity
+                     sensitivity, data_quality, view_models
 analysis/            Numbered scripts (01-11)
 data/                Dataset, indicator_metadata.csv, map outlines (data/map/)
 data_extraction/     build_map_paths.py: how the map outlines were made
@@ -201,15 +209,17 @@ More documentation:
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): how the app, the R functions and the checks fit together, and the design system.
 - [`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md): generated data-quality audit (confirmed defects and open questions).
 - [`docs/TESTING.md`](docs/TESTING.md): every test and check, and what each one proves.
+- [`docs/PRODUCT_DECISIONS.md`](docs/PRODUCT_DECISIONS.md): data, scoring and product decisions, the intended user journey and the unresolved research list.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md): validation steps that need R, remaining work and future features.
 
 ## 7. Limitations
 
 - The ranking is **relative, not absolute**. A closeness of 0.78 means "closest to the best available State/UT", not "78% livable".
-- The weights come from simple 1-5 answers. They express priorities, not measured facts.
+- The weights come from simple 1-5 answers. They express priorities, not measured facts. Gaps between answers are magnified (a four-point gap means "9 times as important" in each comparison), so criteria rated low can end up with very small weights.
+- **The criteria are narrower than their names.** Housing is basic household amenities (not rent or prices), Connectivity is village mobile coverage and EV adoption (not transport), Economy is unemployment, poverty and inflation (not salaries or the cost of living), Health is service coverage (not distance to hospitals), Safety is recorded crime (not personal safety) and Environment is PM2.5 only.
 - **Four indicators have sources that could not be traced** to a published table: Education score, Crime rate, Price stability and Electric vehicles per lakh. Criteria that use them should be treated with some caution.
 - **Some values look unusual.** Manipur's price-stability figure is 1.32, far below other States, and has not been verified.
-- **Low-confidence States/UTs** can rank high on thin data (see Results). Missing indicators are skipped, not penalised, so for example Chandigarh's Housing score of 1.00 rests on one of its three indicators.
+- **Limited-coverage States/UTs** can rank high on thin data (see Results). Missing indicators are skipped, not penalised, so for example Chandigarh's Housing score of 1.00 rests on one of its three indicators.
 - **Sources and reporting years are not recorded** for any indicator, and two "percentage" indicators exceed 100 (clean cooking fuel in 22 States/UTs, immunisation in 7). See [`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md).
 - **Percentile capping** means differences beyond the 5th and 95th percentiles of an indicator do not affect the score.
 - **Results depend on data-handling choices.** If missing indicators counted as the worst score instead of being skipped, the Retiree top 3 would lose Lakshadweep and Ladakh; without the percentile cap, Lakshadweep would lead for the Family persona. These what-if results are in [`docs/DATA_AUDIT.md`](docs/DATA_AUDIT.md) (section 11); the app itself is unchanged.

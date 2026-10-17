@@ -11,14 +11,24 @@ QUESTIONS <- data.frame(
   Criterion = CRITERIA,
   Icon = c("&#127891;", "&#128737;&#65039;", "&#127973;", "&#127968;",
            "&#128188;", "&#127807;", "&#128646;"),
-  Hint = c("School learning levels and higher-secondary enrolment",
-           "Low crime and low murder rates",
-           "Immunisation, safe institutional deliveries and health workers",
-           "Pucca houses, clean cooking fuel and piped water",
-           "Low unemployment, low poverty and stable prices",
-           "Lower air pollution (PM2.5)",
-           "Villages with 3G/4G coverage and electric-vehicle adoption"),
+  # Hints say what is actually measured and what is not (CRITERION_INFO in
+  # R/data_quality.R holds the same facts for other screens).
+  Hint = c("Measured by an education index, Grade 8 learning levels and higher-secondary enrolment. Not school quality near a particular home.",
+           "Measured by recorded crime and recorded murders. Not personal safety; recorded crime also depends on reporting.",
+           "Measured by immunisation, births in health facilities and health-worker numbers. Not distance to hospitals.",
+           "Measured by permanent (pucca) houses, clean cooking fuel and rural piped water. Not rent or house prices.",
+           "Measured by unemployment, poverty and average inflation. Not salaries, job openings or the cost of living.",
+           "Measured by fine-particle air pollution (PM2.5) only.",
+           "Measured by village 3G/4G coverage and electric-vehicle adoption. Not public transport or commute times."),
   stringsAsFactors = FALSE)
+# Question titles use the honest labels (criterion name plus what it measures).
+QUESTIONS$Label <- c("Education (school learning and enrolment)",
+                     "Safety (recorded crime)",
+                     "Health (health-service coverage)",
+                     "Housing (basic household amenities)",
+                     "Economy (unemployment, poverty and inflation)",
+                     "Environment (air quality)",
+                     "Connectivity (village mobile coverage and EVs)")
 
 # Labels for the 1-5 answer buttons.
 ANSWER_LABELS <- c("Not important", "Slightly", "Moderately", "Very", "Extremely")
@@ -58,13 +68,37 @@ weights_table <- function(ahp) {
   out[order(-round(out$Weight, 12), match(out$Criterion, CRITERIA)), ]
 }
 
-#' Plain-language reading of the consistency ratio.
+#' Plain-language note on the weights.
+#'
+#' The AHP consistency ratio is still computed (ahp$CR) but is not shown as a
+#' quality signal: with 1-5 ratings turned into comparisons by the difference
+#' rule it is always 0.10 or below (tested in tests/testthat/test-ahp.R), so it
+#' cannot tell the user anything. The message instead says what the weights mean.
 #' @param ahp list returned by run_ahp().
 #' @return one sentence.
 consistency_message <- function(ahp) {
-  if (ahp$consistent) {
-    sprintf("Consistency ratio %.3f (it must be 0.10 or below): your answers are consistent.", ahp$CR)
-  } else {
-    sprintf("Consistency ratio %.3f is above 0.10: some answers contradict each other, so treat the weights with care.", ahp$CR)
+  w <- ahp$weights
+  ratio <- max(w) / min(w)
+  if (ratio < 1.05) {
+    return("Your weights come straight from your 1-5 answers. You rated everything the same, so every criterion counts equally.")
   }
+  sprintf("Your weights come straight from your 1-5 answers: gaps between answers are magnified, so your top criterion (%s) counts about %s times as much as your lowest (%s).",
+          names(w)[which.max(w)], format(round(ratio, if (ratio < 10) 1 else 0), nsmall = 0), names(w)[which.min(w)])
+}
+
+#' The user's priorities in plain words (for "What matters most to you").
+#' @param ahp list returned by run_ahp().
+#' @return data.frame(Criterion, Label, Rating, Weight, Percent, Sentence),
+#'   largest weight first; Percent is a rounded text such as "32%".
+weights_view <- function(ahp) {
+  wt <- weights_table(ahp)
+  a <- ahp$answers
+  if (is.null(names(a))) names(a) <- CRITERIA
+  data.frame(Criterion = wt$Criterion,
+             Label = criterion_label(wt$Criterion),
+             Rating = unname(as.integer(a[wt$Criterion])),
+             Weight = wt$Weight,
+             Percent = sprintf("%.0f%%", 100 * wt$Weight),
+             Sentence = sprintf("%s counts for about %.0f%% of your result.", wt$Criterion, 100 * wt$Weight),
+             row.names = NULL, stringsAsFactors = FALSE)
 }

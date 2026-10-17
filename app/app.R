@@ -23,15 +23,20 @@ ROOT <- if (file.exists(file.path("..", "R", "common.R"))) {
   stop("Cannot find the project's R/ folder. Open the RStudio project first.")
 }
 for (f in c("common", "ahp", "topsis", "similarity", "explain", "compare", "map", "app_logic", "app_text",
-            "report", "sensitivity", "pareto", "atlas", "catalogue", "news", "robustness", "scenario")) {
+            "report", "sensitivity", "pareto", "atlas", "catalogue", "news", "robustness", "scenario",
+            "data_quality", "view_models")) {
   source(file.path(ROOT, "R", paste0(f, ".R")))
 }
 d          <- load_livability_data(file.path(ROOT, "data", "State_UT_Livability_Dataset_Final.csv"))
 X          <- criteria_matrix(d)
-LOW_CONF   <- d$State[d$Low_Confidence == 1]
 STATE_TYPE <- setNames(d$Type, d$State)
 MAP_DATA   <- load_map_paths(file.path(ROOT, "data", "map", "india_map_paths.csv"))
 META       <- load_indicator_metadata(file.path(ROOT, "data", "indicator_metadata.csv"))
+# Places with limited data coverage (R/data_quality.R: 3+ indicators missing, or
+# a criterion with fewer than half of its indicators or none). On the current
+# data these are the same four places as the dataset's Low_Confidence column.
+LOW_CONF   <- limited_coverage_states(d, META)
+COVERAGE   <- coverage_summary(d, META)
 # Data notes per State/UT (missing indicators, low confidence), shown with the
 # robustness results so places scored on thin data are visible.
 DATA_FLAGS <- vapply(d$State, function(st) {
@@ -54,10 +59,11 @@ NEWS_STATE <- new.env()
 PRESET_BLURB <- c("Economy, connectivity and housing first",
                   "Education, safety and health first",
                   "Health, environment and safety first")
-VERDICT_CLASS <- c("Strong match" = "strong", "Moderate match" = "moderate",
-                   "Falls short" = "short")
-VERDICT_COLOUR <- c("Strong match" = "#10B981", "Moderate match" = "#F59E0B",
-                    "Falls short" = "#EF4444")
+# Verdicts are positions among the places ranked (see priority_breakdown()).
+VERDICT_CLASS <- c("Top third" = "strong", "Middle third" = "moderate",
+                   "Bottom third" = "short")
+VERDICT_COLOUR <- c("Top third" = "#10B981", "Middle third" = "#F59E0B",
+                    "Bottom third" = "#EF4444")
 
 # ---- Small UI helpers --------------------------------------------------------
 # A button that sends one click event to the server under input$<id>. The random
@@ -109,7 +115,7 @@ question_screen <- function(step, answers) {
       div(class = "fc-bar", tags$i(style = sprintf("width:%.0f%%", 100 * (step - 1) / nrow(QUESTIONS)))),
       div(class = "flashcard",
           div(class = "fc-icon", HTML(q$Icon)),
-          tags$h2(class = "fc-title", "How important is ", tags$span(q$Criterion), " to you?"),
+          tags$h2(class = "fc-title", "How important is ", tags$span(q$Label), " to you?"),
           tags$p(class = "fc-hint", q$Hint),
           div(class = "scale", buttons)),
       div(class = "fc-nav",
@@ -128,7 +134,7 @@ why_row <- function(row) {
       div(class = "why-text", row$Sentence))
 }
 
-top_card <- function(rec, row, i) {
+top_card <- function(rec, row, i, stab = NULL) {
   st  <- row$State
   pb  <- priority_breakdown(rec$topsis, rec$ahp$weights, st, 3)
   sim <- similar_states(rec$X, st, 3)
@@ -137,9 +143,14 @@ top_card <- function(rec, row, i) {
           span(class = "medal", HTML(c("&#129351;", "&#129352;", "&#129353;")[i])),
           div(tags$h3(class = "tc-name", st),
               div(class = "tc-meta", sprintf("%s | rank %d of %d", STATE_TYPE[[st]], row$Rank, nrow(rec$X))))),
-      if (st %in% LOW_CONF) div(class = "badge-low", HTML("&#9888;&#65039; Low data confidence")),
+      if (st %in% LOW_CONF) div(class = "badge-low", HTML("&#9888;&#65039; Limited data coverage")),
       div(class = "match-bar", tags$i(style = sprintf("width:%.0f%%", 100 * row$Closeness))),
-      div(class = "match-label", sprintf("Match score (TOPSIS closeness): %.3f", row$Closeness)),
+      div(class = "match-label", sprintf("Relative match: %.2f", row$Closeness)),
+      if (!is.null(stab) && st %in% stab$shortlist$State) {
+        div(class = "short-text", sprintf("Stayed in your top 3 in %d of %d small changes to your answers.",
+                                          stab$shortlist$Stayed_Top_k[stab$shortlist$State == st], stab$n_variants))
+      },
+      if (nzchar(COVERAGE$Note[COVERAGE$State == st])) div(class = "short-text", COVERAGE$Note[COVERAGE$State == st]),
       div(class = "why", tags$h4("Why this fits you"),
           lapply(seq_len(nrow(pb)), function(j) why_row(pb[j, ])),
           div(class = "short-text", shortfall_sentence(rec$topsis, rec$ahp$weights, st))),
@@ -205,8 +216,8 @@ weights_panel <- function(rec) {
       div(class = paste("cr-box", if (rec$ahp$consistent) "ok" else "warn"),
           HTML(if (rec$ahp$consistent) "&#9989; " else "&#9888;&#65039; "),
           consistency_message(rec$ahp)),
-      div(class = "note", "Weights come from AHP: your 1-5 answers become pairwise comparisons, ",
-          "and the weights are the principal eigenvector of that comparison matrix."))
+      div(class = "note", "Your 1-5 answers are compared in pairs and turned into weights that add up to 100%. ",
+          "The technical method is described under How it works."))
 }
 
 # ---- Panels for the added features (plain layout, original styles) ---------------
@@ -280,7 +291,7 @@ results_screen <- function(exclude_now) {
               ui_button("restart", "Start over", "btn-ghost"))),
       div(class = "toggle-row",
           checkboxInput("exclude_low",
-                        sprintf("Leave out low-confidence States/UTs (%s)", paste(LOW_CONF, collapse = ", ")),
+                        sprintf("Leave out places with limited data coverage (%s)", paste(LOW_CONF, collapse = ", ")),
                         value = exclude_now)),
       navset_pill(id = "result_tabs",
                   nav_panel("Top 3", uiOutput("top3")),
@@ -312,7 +323,7 @@ ui <- page_fluid(
 server <- function(input, output, session) {
   empty_answers <- function() setNames(rep(NA_integer_, nrow(QUESTIONS)), CRITERIA)
   state <- reactiveValues(step = 0L, answers = empty_answers(), source = "questions",
-                          exclude = FALSE)
+                          exclude = FALSE, previous = NULL)
   selected_state <- reactiveVal(NULL)
   
   # -- which screen is showing --
@@ -330,16 +341,16 @@ server <- function(input, output, session) {
   # -- navigation --
   go_results <- function() { selected_state(NULL); state$step <- nrow(QUESTIONS) + 1L }
   observeEvent(input$start, {
-    state$answers <- empty_answers(); state$source <- "questions"; state$step <- 1L
+    state$answers <- empty_answers(); state$source <- "questions"; state$step <- 1L; state$previous <- NULL
   })
   lapply(seq_along(PERSONAS), function(i) {
     observeEvent(input[[paste0("preset_", i)]], {
       state$answers <- setNames(as.integer(PERSONAS[[i]][CRITERIA]), CRITERIA)
-      state$source <- paste("preset:", names(PERSONAS)[i]); state$step <- 1L
+      state$source <- paste("preset:", names(PERSONAS)[i]); state$step <- 1L; state$previous <- NULL
     })
   })
   observeEvent(input$skip_all, {
-    state$answers <- EQUAL_ANSWERS; state$source <- "equal"; go_results()
+    state$answers <- EQUAL_ANSWERS; state$source <- "equal"; state$previous <- NULL; go_results()
   })
   # Each answer carries the question it came from: an answer sent from a screen
   # that has already been replaced (a double click) is ignored, and only whole
@@ -357,10 +368,18 @@ server <- function(input, output, session) {
     if (state$step == nrow(QUESTIONS)) go_results() else state$step <- state$step + 1L
   })
   observeEvent(input$back, { state$step <- max(0L, state$step - 1L) })
-  observeEvent(input$edit_answers, { state$source <- "edited"; state$step <- 1L })
+  # Editing answers is the what-if workflow: the answers shown before editing
+  # are kept, so the results can say what changed and offer to go back.
+  observeEvent(input$edit_answers, {
+    state$previous <- state$answers; state$source <- "edited"; state$step <- 1L
+  })
+  observeEvent(input$restore_previous, {
+    req(!is.null(state$previous), state$step > nrow(QUESTIONS))
+    prev <- state$previous; state$previous <- state$answers; state$answers <- prev
+  })
   observeEvent(input$restart, {
     state$answers <- empty_answers(); state$source <- "questions"; state$step <- 0L
-    selected_state(NULL)
+    state$previous <- NULL; selected_state(NULL)
   })
   observeEvent(input$exclude_low, { state$exclude <- isTRUE(input$exclude_low) },
                ignoreInit = TRUE)
@@ -378,19 +397,35 @@ server <- function(input, output, session) {
   
   output$mode_note <- renderUI({
     req(state$step > nrow(QUESTIONS))
-    tags$p(if (state$source == "equal") {
-      "Equal weights: you skipped the questions, so every factor counts the same."
-    } else if (startsWith(state$source, "preset:")) {
-      paste0("Based on your answers (started from the ", sub("^preset: ", "", state$source), " preset).")
-    } else {
-      "Based on your answers."
-    })
+    prev <- state$previous
+    changed <- if (!is.null(prev) && !anyNA(prev) && any(prev != state$answers)) {
+      tryCatch(scenario_view(prev, state$answers, X, LOW_CONF, state$exclude), error = function(e) NULL)
+    }
+    tagList(
+      tags$p(if (state$source == "equal") {
+        "Equal weights: you skipped the questions, so every factor counts the same."
+      } else if (startsWith(state$source, "preset:")) {
+        paste0("Based on your answers (started from the ", sub("^preset: ", "", state$source), " example).")
+      } else {
+        "Based on your answers."
+      }),
+      if (!is.null(changed)) {
+        div(class = "note", tags$b("What changed since your previous answers: "), paste(changed$sentences, collapse = " "), " ",
+            ui_button("restore_previous", "Go back to my previous answers", "btn-ghost"))
+      })
   })
   
   output$top3 <- renderUI({
     r <- rec(); top <- top_k(r$topsis, 3)
-    tagList(div(class = "top-grid", lapply(seq_len(nrow(top)), function(i) top_card(r, top[i, ], i))),
-            div(class = "note", "Closeness runs from 0 (worst possible) to 1 (the ideal State/UT for you). ",
+    stab <- tryCatch(stability_check(state$answers, X, LOW_CONF, state$exclude, 3), error = function(e) NULL)
+    alt <- if (!state$exclude && any(top$State %in% LOW_CONF)) {
+      top_k(compute_recommendation(state$answers, X, LOW_CONF, TRUE)$topsis, 3)$State
+    }
+    tagList(if (!is.null(stab)) div(class = "note", paste(stab$sentences[-(2:(1 + nrow(top)))], collapse = " ")),
+            if (!is.null(alt)) div(class = "note", sprintf("Without places with limited data coverage, your top 3 would be %s.",
+                                                           paste(alt, collapse = ", "))),
+            div(class = "top-grid", lapply(seq_len(nrow(top)), function(i) top_card(r, top[i, ], i, stab))),
+            div(class = "note", MATCH_NOTE, " ", SCOPE_NOTE, " ",
                 "Similar States/UTs are found by comparing all seven scores equally, so they are not the same as the next-ranked ones."))
   })
   
@@ -418,7 +453,7 @@ server <- function(input, output, session) {
       html <- build_report_html(rec(), X, LOW_CONF, state$source, STATE_TYPE,
                                 shortlist = intersect(input$cmp_pick, rownames(rec()$X)),
                                 scenario = if (!is.null(sc) && length(sc$changed) > 0) sc$scenario else NULL,
-                                pareto = pareto_front(rec()$X))
+                                d = d, meta = META)
       writeLines(html, file, useBytes = TRUE)
     },
     contentType = "text/html")
@@ -567,23 +602,34 @@ server <- function(input, output, session) {
                              tags$td(x$Missing_Indicators), tags$td(if (x$Low_Confidence) "low" else "normal"))
                    }))))
   })
+  # Details use place_detail() on the current ranking, so positions, the
+  # comparison sentence and similar places respect the low-confidence switch.
   output$cat_detail <- renderUI({
     st <- input$cat_pick
     req(is.character(st), length(st) == 1, st %in% rownames(X))
-    nt <- state_data_notes(d, META, st)
-    pos <- vapply(CRITERIA, function(cn) unname(rank(-X[, cn], ties.method = "min")[st]), numeric(1))
+    pd <- place_detail(rec(), d, META, st, LOW_CONF)
+    n_cmp <- if (pd$in_ranking) pd$n_ranked else pd$n_ranked + 1
+    ev <- pd$indicators
     div(class = "panel-card",
         tags$h4(st),
-        tags$ul(lapply(CRITERIA, function(cn) tags$li(sprintf("%s: %.2f (%s of 36)", cn, X[st, cn], ordinal(pos[[cn]]))))),
-        tags$p(explain_pareto(pareto_front(X), st)),
-        if (nrow(nt$missing) == 0) tags$p("All 17 indicators are available.")
-        else tagList(
-          tags$p(sprintf("%d of 17 indicators are missing:", nrow(nt$missing))),
-          tags$ul(lapply(seq_len(nrow(nt$missing)), function(j) tags$li(sprintf("%s (%s)", nt$missing$Label[j], nt$missing$Criterion[j])))),
-          if (length(nt$criteria_without_data)) tags$p(sprintf("No indicator is available for %s, so that score is not based on measured data (see docs/DATA_AUDIT.md).",
-                                                               paste(nt$criteria_without_data, collapse = ", "))),
-          if (length(nt$partial)) tags$p(sprintf("Scored on the available indicators only: %s.", paste(nt$partial, collapse = ", ")))),
-        if (nt$low_confidence) tags$p(class = "note", "Flagged low data confidence."))
+        tags$p(if (pd$in_ranking) sprintf("Rank %d of %d for your priorities (relative match %.2f).", pd$rank, pd$n_ranked, pd$relative_match)
+               else "Not in your current ranking (left out by your choice); positions below compare it with the places ranked."),
+        tags$ul(lapply(seq_len(nrow(pd$criteria)), function(i) {
+          cr <- pd$criteria[i, ]
+          tags$li(sprintf("%s: relative score %.2f (%s of %d)%s", cr$Criterion, cr$Score, ordinal(cr$Position), n_cmp,
+                          switch(cr$Support, full = "", partial = sprintf(", based on %d of %d indicators", cr$Available, cr$Total),
+                                 thin = sprintf(", based on only %d of %d indicators", cr$Available, cr$Total),
+                                 imputed = ", estimated: no indicator available")))
+        })),
+        tags$p(pd$standing),
+        tags$p(class = "note", "Similar overall profile (does not use your priorities): ",
+               paste(sprintf("%s (%.2f)", pd$similar$State, pd$similar$Distance), collapse = ", ")),
+        if (sum(is.na(ev$Raw)) == 0) tags$p("All 17 indicators are available.")
+        else tags$p(sprintf("%d of 17 indicators are missing.", sum(is.na(ev$Raw)))),
+        if (nzchar(pd$coverage_note)) tags$p(class = "note", pd$coverage_note),
+        tags$h4("Indicator values (original data)"),
+        tags$ul(lapply(seq_len(nrow(ev)), function(j) tags$li(sprintf("%s (%s)", ev$Evidence[j], ev$Criterion[j])))),
+        tags$p(class = "note", "Sources and reporting years are not recorded for any indicator (see docs/DATA_AUDIT.md)."))
   })
   output$compare <- renderUI({
     r <- rec()
@@ -633,7 +679,7 @@ server <- function(input, output, session) {
   output$news <- renderUI({
     n <- news()
     switch(n$status,
-           off = tags$p("News is switched off (LIVABILITY_NEWS=off), or the xml2 and curl packages are not installed."),
+           off = tags$p("News is off by default: the headlines are not about particular States/UTs and are not used in the rankings. Set LIVABILITY_NEWS=on (with the xml2 and curl packages installed) to show them."),
            loading = tags$p("Loading headlines..."),
            unavailable = tags$p("Headlines are unavailable right now. The rest of the app works as usual."),
            ok = tags$ul(id = "news-list", lapply(seq_len(nrow(n$items)), function(i) {

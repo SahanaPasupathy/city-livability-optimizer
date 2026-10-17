@@ -46,3 +46,40 @@ jobs:
 
       - name: Markdown lint
         run: npx --yes markdownlint-cli2@0.18.1
+
+  # Runs the R code itself: the testthat suite and the app/map/report check
+  # scripts (each prints [PASS]/[FAIL]; any [FAIL] fails the job). Added with
+  # the product review; it has not run on GitHub yet (see docs/TESTING.md).
+  r-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::shiny
+            any::bslib
+            any::htmltools
+            any::testthat
+            any::withr
+            any::xml2
+            any::curl
+            any::callr
+            any::httpuv
+
+      - name: Automated R tests (testthat)
+        run: |
+          Rscript -e 'res <- as.data.frame(testthat::test_dir("tests/testthat", reporter = "summary", stop_on_failure = FALSE)); cat(sprintf("\n%d tests, %d expectations passed, %d failed, %d errors\n", nrow(res), sum(res$passed), sum(res$failed), sum(res$error))); if (sum(res$failed) + sum(res$error) > 0) quit(status = 1)'
+
+      - name: Data, map, app and report check scripts
+        run: |
+          for s in 01_audit 07_map 08_app_check 09_report_check; do
+            Rscript -e "source('analysis/$s.R')" | tee "/tmp/$s.log"
+            if grep -q '\[FAIL\]' "/tmp/$s.log"; then echo "::error::$s has failing checks"; exit 1; fi
+          done

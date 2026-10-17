@@ -34,10 +34,31 @@ test_that("the report's optional sections appear without disturbing the ranking 
   rec <- compute_recommendation(setNames(as.integer(PERSONAS[["Family"]]), CRITERIA), XM, LOWC)
   sc <- compute_recommendation(setNames(c(5L, 1L, 5L, 3L, 3L, 3L, 2L), CRITERIA), XM, LOWC)
   html <- build_report_html(rec, XM, LOWC, "preset: Family", setNames(DATA$Type, DATA$State),
-                            shortlist = c("Kerala", "Goa"), scenario = sc, pareto = pareto_front(rec$X))
+                            shortlist = c("Kerala", "Goa"), scenario = sc, d = DATA, meta = META)
   expect_equal(lengths(regmatches(html, gregexpr("<tr>\\s*<td>", html)))[1], 36)
-  expect_true(grepl("My comparison", html) && grepl("What-if scenario (hypothetical)", html, fixed = TRUE) &&
-                grepl("Pareto-efficient places", html))
+  expect_true(grepl("My comparison", html) && grepl("What-if scenario (hypothetical)", html, fixed = TRUE))
+  # The 7-criteria Pareto list was replaced by plain trade-offs and per-place data notes.
+  expect_false(grepl("Pareto", html))
+  expect_true(grepl("Data notes for the places in this report", html, fixed = TRUE))
+  expect_true(grepl("<strong>Chandigarh</strong>\\s*:\\s*Limited data coverage", html))
+  expect_true(any(vapply(comparison_view(rec, c("Kerala", "Goa"), DATA, META)$tradeoffs,
+                         function(t) grepl(htmltools::htmlEscape(t), html, fixed = TRUE), logical(1))))
+  expect_true(grepl("Evidence: ", html) && grepl("Before you move, check", html) && grepl("Stability: stayed in your top 3", html))
   plain <- build_report_html(rec, XM, LOWC, "preset: Family", NULL)
   expect_false(grepl("My comparison", plain))
+  expect_false(grepl("Data notes for the places", plain))
+})
+
+test_that("the report uses the same ranked places as the app (regression: similar places)", {
+  rec <- compute_recommendation(setNames(as.integer(PERSONAS[["Retiree"]]), CRITERIA), XM, LOWC, exclude_low = TRUE)
+  html <- build_report_html(rec, XM, LOWC, "questions", NULL, d = DATA, meta = META)
+  sims <- regmatches(html, gregexpr("does not use your priorities\\): [^<]*", html))[[1]]
+  expect_length(sims, 3)
+  # No place left out of the ranking may be offered as a similar place.
+  expect_false(any(vapply(LOWC, function(s) any(grepl(s, sims, fixed = TRUE)), logical(1))))
+  top <- top_k(rec$topsis, 3)$State
+  for (st in top) {
+    expected <- similar_states(rec$X, st, 3)$State
+    expect_true(any(vapply(sims, function(x) all(vapply(expected, grepl, logical(1), x = x, fixed = TRUE)), logical(1))))
+  }
 })

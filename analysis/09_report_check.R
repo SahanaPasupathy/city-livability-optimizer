@@ -12,6 +12,9 @@ source(file.path("R", "explain.R"))
 source(file.path("R", "app_logic.R"))
 source(file.path("R", "app_text.R"))
 source(file.path("R", "report.R"))
+for (f in c("compare", "pareto", "catalogue", "data_quality", "sensitivity", "robustness", "scenario", "view_models")) {
+  source(file.path("R", paste0(f, ".R")))
+}
 
 d <- load_livability_data()
 X <- criteria_matrix(d)
@@ -32,8 +35,8 @@ rows <- function(html) lengths(regmatches(html, gregexpr("<tr>\\s*<td>", html)))
 cat("\n--- 1. Shared texts ---\n")
 check("Every criterion has a description of its indicators",
       setequal(names(CRITERION_INDICATORS), CRITERIA))
-check("The method has 8 steps and the limits list has 7 points",
-      length(METHOD_STEPS) == 8 && length(LIMITATIONS) == 7)
+check("The method has 8 steps and the limits list has 8 points",
+      length(METHOD_STEPS) == 8 && length(LIMITATIONS) == 8)
 check("The data caveats in the text match the dataset (Manipur 1.32, 4 low-confidence)",
       round(d$Avg_Inflation_PriceStability[d$State == "Manipur"], 2) == 1.32 &&
         length(low_conf) == 4 && all(vapply(low_conf, function(s) any(grepl(s, LIMITATIONS, fixed = TRUE)), logical(1))))
@@ -41,7 +44,8 @@ check("The data caveats in the text match the dataset (Manipur 1.32, 4 low-confi
 cat("\n--- 2. Family report ---\n")
 ans <- setNames(as.integer(PERSONAS[["Family"]]), CRITERIA)
 rec <- compute_recommendation(ans, X, low_conf)
-html <- build_report_html(rec, X, low_conf, "preset: Family", type)
+meta <- load_indicator_metadata()
+html <- build_report_html(rec, X, low_conf, "preset: Family", type, d = d, meta = meta)
 dir.create(file.path("outputs", "reports"), showWarnings = FALSE, recursive = TRUE)
 f <- file.path("outputs", "reports", "09_sample_report_family.html")
 writeLines(html, f, useBytes = TRUE)
@@ -54,12 +58,16 @@ check("Report names the top 3 (Himachal Pradesh, Chandigarh, Punjab)",
 check("Report shows all 7 weights with the real percentages",
       all(vapply(sprintf("%.1f%%", 100 * rec$ahp$weights), function(p) has(html, p), logical(1))))
 check("Report lists all 36 States/UTs in the full ranking", rows(html) == 36)
-check("Report includes the consistency message", has(html, "Consistency ratio"))
+check("Report explains the weights in plain words (no consistency ratio)",
+      has(html, "times as much") && !has(html, "Consistency ratio"))
 check("Report includes 'why this fits you' sentences and a shortfall line",
       has(html, "carries 26% of your preference weight") && has(html, "Where it falls furthest short"))
 check("Report includes similar States/UTs, the method and the limits",
       has(html, "Similar States/UTs") && has(html, "Pairwise comparisons") && has(html, "Manipur"))
-check("Chandigarh is flagged as low confidence", has(html, "low data confidence"))
+check("Chandigarh is flagged as limited data coverage, with its own data note",
+      has(html, "limited data coverage") && has(html, "fewer than half of the usual indicators for Housing"))
+check("Report shows indicator evidence, stability and the before-you-move checklist",
+      has(html, "Evidence: ") && has(html, "small changes to your answers") && has(html, "Before you move, check"))
 
 cat("\n--- 3. Other modes ---\n")
 eq <- compute_recommendation(EQUAL_ANSWERS, X, low_conf)

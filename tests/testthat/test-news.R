@@ -43,8 +43,11 @@ test_that("the cache round-trips and expires", {
   expect_null(read_news_cache(tempfile()))
 })
 
-test_that("the feature can be switched off and feeds overridden", {
+test_that("the feature is off by default, can be switched on, and feeds can be overridden", {
+  withr::with_envvar(c(LIVABILITY_NEWS = NA), expect_false(news_enabled()))
   withr::with_envvar(c(LIVABILITY_NEWS = "off"), expect_false(news_enabled()))
+  withr::with_envvar(c(LIVABILITY_NEWS = "on"),
+                     expect_identical(news_enabled(), requireNamespace("curl", quietly = TRUE)))
   withr::with_envvar(c(LIVABILITY_NEWS_FEEDS = "A|https://a.example/rss;B|https://b.example/rss"), {
     f <- news_feeds()
     expect_equal(f$source, c("A", "B"))

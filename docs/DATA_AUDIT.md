@@ -7,13 +7,13 @@ This report is produced by `tools/audit_data.py` (Python standard library, no R 
 | Input | SHA-256 (first 16 hex) |
 |---|---|
 | `data/State_UT_Livability_Dataset_Final.csv` | `46b73c2b534ac272` |
-| `data/indicator_metadata.csv` | `d3014f4c52eca399` |
+| `data/indicator_metadata.csv` | `be42be894c2becdf` |
 
 ## Summary
 
 - Structural checks: **19 passed, 0 failed**.
 - Stored criterion scores reproduced from the raw indicators: **251 of 252 cells** (to within 2e-04).
-- Confirmed defects: **5**. Potential anomalies needing domain review: **9**. Other observations: **5**.
+- Confirmed defects: **5**. Potential anomalies needing domain review: **9**. Other observations: **6**.
 
 ### Findings at a glance
 
@@ -24,9 +24,9 @@ This report is produced by `tools/audit_data.py` (Python standard library, no R 
 | D1 | Sources and reporting periods are not recorded for any of the 17 indicators | Confirmed in the repository (no source information anywhere) | Record publisher, table, URL and year for each indicator in data/indicator_metadata.csv |
 | D2 | `Immunisation_Pct` exceeds 100 in 7 of 36 States/UTs | Confirmed: values above 100 with no recorded definition. Interpretation unverified | Source verification: find the definition; then decide whether capping at 100 is right |
 | D3 | `Clean_Cooking_Fuel_Pct` exceeds 100 in 22 of 36 States/UTs | Confirmed: values above 100 with no recorded definition. Interpretation unverified | Source verification: find the definition; then decide whether capping at 100 is right |
-| D4 | The scaling of the criterion scores was not documented accurately | Confirmed by exact reconstruction (section 8); documentation already corrected | None for the documentation; ideally commit the script that built the scores |
-| D5 | Lakshadweep's Connectivity score (0.4102) is imputed, not measured, and this was undocumented | Confirmed: no indicator present. Inferred: median imputation (exact match) | Method decision: keep, replace, or exclude the score; document it either way |
-| A1 | Missing indicators are skipped, not penalised | Confirmed in the data (indicator counts per score) | Method decision: whether partial scores should be penalised or flagged |
+| D4 | The scaling of the criterion scores was not documented accurately | Confirmed by exact reconstruction (section 8); documentation already corrected | Done: R/data_quality.R (build_criterion_scores()) rebuilds the stored scores from the raw indicators, and tests/testthat/test-data-quality.R checks every cell |
+| D5 | Lakshadweep's Connectivity score (0.4102) is imputed, not measured, and this was undocumented | Confirmed: no indicator present. Inferred: median imputation (exact match) | Decision taken: the score is kept (so rankings do not change) and flagged as estimated, not measured, wherever it is shown (R/data_quality.R, coverage level "imputed") |
+| A1 | Missing indicators are skipped, not penalised | Confirmed in the data (indicator counts per score) | Decision taken: scores are not penalised (rankings unchanged) but flagged: every criterion has a coverage level (full / partial / thin / imputed) shown with the score (R/data_quality.R) |
 | A2 | Extreme value in `Crime_Rate` | Statistical outlier; may be genuine | Source verification |
 | A3 | Extreme value in `Institutional_Deliveries_Pct` | Statistical outlier; may be genuine | Source verification |
 | A4 | Extreme value in `Kachha_Houses_Pct` | Statistical outlier; may be genuine | Source verification |
@@ -77,10 +77,10 @@ These follow directly from the data and the repository contents. None of them wa
    *Evidence:* Confirmed: values above 100 with no recorded definition. Interpretation unverified. *Next step:* Source verification: find the definition; then decide whether capping at 100 is right.
 4. **The scaling of the criterion scores was not documented accurately.** The README described plain min-max scaling. The stored `_norm` columns are reproduced (to 4 decimals, 251 of 252 cells) only by: capping percentages at 100, capping each indicator at its 5th and 95th percentiles (R's default quantile, type 7), min-max scaling with direction, averaging the indicators that are present, and rescaling the criterion to 0-1. The README and the app text now say so.
 
-   *Evidence:* Confirmed by exact reconstruction (section 8); documentation already corrected. *Next step:* None for the documentation; ideally commit the script that built the scores.
+   *Evidence:* Confirmed by exact reconstruction (section 8); documentation already corrected. *Next step:* Done: R/data_quality.R (build_criterion_scores()) rebuilds the stored scores from the raw indicators, and tests/testthat/test-data-quality.R checks every cell.
 5. **Lakshadweep's Connectivity score (0.4102) is imputed, not measured, and this was undocumented.** None of its Connectivity indicators are present. The stored value equals the median of the other States/UTs' Connectivity scores (0.4102), so it was very likely median-imputed at the criterion level.
 
-   *Evidence:* Confirmed: no indicator present. Inferred: median imputation (exact match). *Next step:* Method decision: keep, replace, or exclude the score; document it either way.
+   *Evidence:* Confirmed: no indicator present. Inferred: median imputation (exact match). *Next step:* Decision taken: the score is kept (so rankings do not change) and flagged as estimated, not measured, wherever it is shown (R/data_quality.R, coverage level "imputed").
 
 ## 3. Potential anomalies (need domain review)
 
@@ -88,7 +88,7 @@ These may be genuine. They are listed so that someone with access to the sources
 
 1. **Missing indicators are skipped, not penalised.** A criterion score is the mean of the indicators that are present, so a State/UT can reach the top of a criterion on partial evidence. Scores of 0.80 or more built this way: Puducherry Housing = 1.00 from 2 of 3 indicators; Lakshadweep Health = 1.00 from 2 of 3 indicators; Delhi Housing = 1.00 from 2 of 3 indicators; Chandigarh Housing = 1.00 from 1 of 3 indicators; A&N Islands Housing = 1.00 from 2 of 3 indicators; Chandigarh Connectivity = 0.92 from 1 of 2 indicators; Ladakh Housing = 0.91 from 2 of 3 indicators; Ladakh Health = 0.88 from 2 of 3 indicators. This favours data-poor UTs, several of which rank highly.
 
-   *Evidence:* Confirmed in the data (indicator counts per score). *Next step:* Method decision: whether partial scores should be penalised or flagged.
+   *Evidence:* Confirmed in the data (indicator counts per score). *Next step:* Decision taken: scores are not penalised (rankings unchanged) but flagged: every criterion has a coverage level (full / partial / thin / imputed) shown with the score (R/data_quality.R).
 2. **Extreme value in `Crime_Rate`:** Delhi 1508.9 (more than 3 x IQR beyond the quartiles; median 183.1). The 5th/95th percentile cap limits its influence, but it should be checked against the source.
 
    *Evidence:* Statistical outlier; may be genuine. *Next step:* Source verification.
@@ -120,6 +120,7 @@ These may be genuine. They are listed so that someone with access to the sources
 - Because percentages are capped at 100 before scaling, 22 of 36 States/UTs share the top `Clean_Cooking_Fuel_Pct` score, so this indicator cannot separate them.
 - Every `Education_Score` value is a multiple of 1/3, which suggests an average of three sub-scores; the components are not documented. Repeated values are therefore expected and are not listed as anomalies.
 - The low-confidence rule in `analysis/01_audit.R` is '3 or more missing indicators, or Lakshadweep'. Lakshadweep has 4 missing, so the named exception is redundant with the current data.
+- The app now derives the flag from indicator coverage (R/data_quality.R, limited_coverage_states()): 3 or more missing indicators, or a criterion with fewer than half of its indicators (or none). On the current data it flags the same four places; the others with missing indicators get a per-criterion data note.
 - States/UTs with missing indicators that are *not* flagged low confidence: Arunachal Pradesh (1), Dadra and Nagar Haveli and Daman and Diu (2), Delhi (1), Puducherry (2), Telangana (1).
 
 ## 5. Indicator dictionary

@@ -37,13 +37,15 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   // Results for answers 4,3,5,2,4,1,3, compared with R.
   const n1 = await names(p); const m = await p.$$eval('.match-label', e => e.map(x => x.textContent));
   ok('results: top 3 match R (Delhi, Kerala, Chandigarh)', n1.join('|') === 'Delhi|Kerala|Chandigarh', n1.join(', '));
-  ok('results: match scores match R (0.791, 0.790, 0.784)', m[0].includes('0.791') && m[1].includes('0.790') && m[2].includes('0.784'));
+  ok('results: relative match scores match R (0.79, 0.79, 0.78)', m[0].includes('Relative match: 0.79') && m[1].includes('0.79') && m[2].includes('0.78'));
+  ok('results: stability counts and the alternative without limited-coverage places are shown', (await p.textContent('#top3')).includes('small changes to your answers') &&
+     (await p.textContent('#top3')).includes('Without places with limited data coverage, your top 3 would be Delhi, Kerala, Punjab'));
   ok('results: original tabs plus the added ones', (await p.$$eval('#result_tabs .nav-link', e => e.map(x => x.textContent.trim()))).join('|') ===
      'Top 3|Map|Full ranking|My weights|Trade-offs|Robustness|What if|States & UTs|News|How it works|About and limits');
   await p.click('#result_tabs .nav-link >> text=My weights'); await idle(p);
   const w = await p.$$eval('.w-row', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
   ok('weights: AHP weights match R (Health 39.2%, Environment 2.3%)', w[0].endsWith('Health 39.2%') && w[6].endsWith('Environment 2.3%'), w[0] + ' / ' + w[6]);
-  ok('weights: consistency ratio matches R (0.036)', (await p.textContent('.cr-box')).includes('0.036'));
+  ok('weights: plain explanation instead of the consistency ratio', (await p.textContent('.cr-box')).includes('times as much') && !(await p.textContent('.cr-box')).includes('0.036'));
   await p.click('#result_tabs .nav-link >> text=Full ranking'); await idle(p);
   const rows = () => p.$$eval('#rank-table tbody tr', r => r.filter(x => x.style.display !== 'none').length);
   ok('ranking: 36 rows', (await rows()) === 36);
@@ -123,16 +125,16 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   await p.fill('#cat_search', ''); await p.waitForTimeout(700); await idle(p);
   await p.selectOption('#cat_pick', 'Lakshadweep'); await idle(p);
   const det = await p.textContent('#cat_detail');
-  ok('catalogue: data notes from the dataset (Lakshadweep: 4 missing, no Connectivity data)', det.includes('4 of 17 indicators are missing') && det.includes('No indicator is available for Connectivity'));
+  ok('catalogue: data notes from the dataset (Lakshadweep: 4 missing, Connectivity estimated, raw values)', det.includes('4 of 17 indicators are missing') && det.includes('estimated: no indicator available') && det.includes('Indicator values (original data)'));
   await p.evaluate(() => { const z = $('#cmp_pick')[0].selectize; z.addItem('Kerala'); z.addItem('Goa'); }); await idle(p);
   const tot = await p.$eval('#compare-table tbody tr:last-child', r => r.textContent.replace(/\s+/g, ' '));
   ok('comparison: match scores and ranks agree with the ranking (Kerala 0.790 rank 2)', tot.includes('0.790 (2)'), tot);
 
   // -- News: real headlines or an honest unavailable message --
   await tab('News');
-  await p.waitForFunction(() => !/Loading headlines/.test(document.getElementById('news').textContent), null, { timeout: 40000 });
+  await p.waitForFunction(() => !/Loading headlines/.test(document.getElementById('news').textContent), null, { timeout: 40000 });  // off by default
   const links = await p.$$eval('#news-list a', a => a.map(x => ({ h: x.href, t: x.target, r: x.rel })));
-  const unavailable = (await p.textContent('#news')).includes('unavailable');
+  const unavailable = /unavailable|off by default/.test(await p.textContent('#news'));
   ok('news: real headlines with safe external links, or the unavailable message', unavailable || (links.length > 0 && links.length <= 4 && links.every(l => /^https?:\/\//.test(l.h) && l.t === '_blank' && /noopener/.test(l.r))),
      unavailable ? 'feeds unavailable' : links.length + ' headlines');
 
@@ -140,8 +142,8 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('text=Download my report')]);
   const rp = OUT + '/report.html'; await dl.saveAs(rp); const rep = fs.readFileSync(rp, 'utf8');
   ok('report: downloads with the same top 3 and 36 ranking rows', rep.includes('1. Delhi') && rep.includes('2. Kerala') && (rep.match(/<tr>\s*<td>/g) || []).length === 36);
-  ok('report: includes the comparison, the what-if scenario and the Pareto section', rep.includes('My comparison') && rep.includes('What-if scenario (hypothetical)') &&
-     rep.includes('Pareto-efficient places') && /<td>Lakshadweep<\/td>\s*<td>5<\/td>/.test(rep));
+  ok('report: includes the comparison, the what-if scenario and per-place data notes (no Pareto list)', rep.includes('My comparison') && rep.includes('What-if scenario (hypothetical)') &&
+     rep.includes('Data notes for the places in this report') && !rep.includes('Pareto-efficient places') && /<td>Lakshadweep<\/td>\s*<td>5<\/td>/.test(rep));
 
   // Low-confidence switch.
   await p.click('#result_tabs .nav-link >> text=Top 3'); await idle(p);

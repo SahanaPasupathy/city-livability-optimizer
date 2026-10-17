@@ -9,8 +9,12 @@
 #   block an app that uses it.
 # * Nothing is invented: if no feed can be read, the result is empty.
 # * Needs the xml2 and curl packages; news_enabled() is FALSE without them.
+# * OFF BY DEFAULT (since the product review): the headlines are not about any
+#   particular State/UT and are not used in the recommendations, and turning
+#   the feature on starts a background process and writes a cache file in the
+#   user's cache folder. Set LIVABILITY_NEWS=on to enable it.
 # Environment variables (all optional):
-#   LIVABILITY_NEWS=off            switch the feature off
+#   LIVABILITY_NEWS=on             switch the feature on (default: off)
 #   LIVABILITY_NEWS_FEEDS          "Source|URL;Source|URL" to replace the feeds
 #   LIVABILITY_NEWS_CACHE          cache file (default: the user cache folder)
 # ==============================================================================
@@ -39,9 +43,10 @@ NEWS_TOPICS <- list(
                        "infrastructure")
 )
 
-#' Is the news feature available (switched on and packages installed)?
+#' Is the news feature available? Only when LIVABILITY_NEWS is "on" (or
+#' "true"/"1") and the xml2 and curl packages are installed. Off by default.
 news_enabled <- function() {
-  !identical(tolower(Sys.getenv("LIVABILITY_NEWS")), "off") &&
+  tolower(Sys.getenv("LIVABILITY_NEWS")) %in% c("on", "true", "1") &&
     requireNamespace("xml2", quietly = TRUE) && requireNamespace("curl", quietly = TRUE)
 }
 

@@ -472,7 +472,8 @@ def classify(res):
         "are present, and rescaling the criterion to 0-1. The README and the app text now say so."
         % (res["n_repro"], res["n_cells"]),
         "Confirmed by exact reconstruction (section 8); documentation already corrected",
-        "None for the documentation; ideally commit the script that built the scores")
+        "Done: R/data_quality.R (build_criterion_scores()) rebuilds the stored scores from the raw "
+        "indicators, and tests/testthat/test-data-quality.R checks every cell")
 
     for st, c, stored, med in res["imputed"]:
         audit.add("defects",
@@ -481,7 +482,8 @@ def classify(res):
             "(%.4f), so it was very likely median-imputed at the criterion level."
             % (st, c, stored, c, c, med),
             "Confirmed: no indicator present. Inferred: median imputation (exact match)",
-            "Method decision: keep, replace, or exclude the score; document it either way")
+            "Decision taken: the score is kept (so rankings do not change) and flagged as estimated, not "
+            "measured, wherever it is shown (R/data_quality.R, coverage level \"imputed\")")
 
     partial_lines = []
     for c in CRITERIA:
@@ -496,7 +498,8 @@ def classify(res):
             "Scores of 0.80 or more built this way: %s. This favours data-poor UTs, several of which rank highly."
             % ("; ".join(high) if high else "none"),
             "Confirmed in the data (indicator counts per score)",
-            "Method decision: whether partial scores should be penalised or flagged")
+            "Decision taken: scores are not penalised (rankings unchanged) but flagged: every criterion "
+            "has a coverage level (full / partial / thin / imputed) shown with the score (R/data_quality.R)")
 
     for ind in res["indicators"]:
         p = prof[ind]
@@ -566,6 +569,11 @@ def classify(res):
         "The low-confidence rule in `analysis/01_audit.R` is '3 or more missing indicators, or Lakshadweep'. "
         "Lakshadweep has %d missing, so the named exception is redundant with the current data."
         % lc["missing_n"].get("Lakshadweep", 0))
+    audit.info.append(
+        "The app now derives the flag from indicator coverage (R/data_quality.R, limited_coverage_states()): "
+        "3 or more missing indicators, or a criterion with fewer than half of its indicators (or none). "
+        "On the current data it flags the same four places; the others with missing indicators get a "
+        "per-criterion data note.")
     if lc["unflagged_missing"]:
         audit.info.append(
             "States/UTs with missing indicators that are *not* flagged low confidence: %s."
