@@ -1,0 +1,57 @@
+/* Layout helpers for the functional screens (What if?, Compare, Stability,
+   Top 3 details). Kept separate from style.css so the visual redesign can
+   replace or drop it; it only uses the variables defined in style.css. */
+.pref-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 16px;margin:10px 0 4px;}
+.pref-grid .shiny-input-container{width:100% !important;margin-bottom:6px;}
+.pref-grid label{font-weight:700;font-size:14px;}
+.whatif-actions{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px;}
+.whatif-banner{background:var(--brand-soft);color:var(--ink);border-radius:14px;padding:8px 12px;margin-top:6px;font-size:14px;}
+.whatif-summary{font-weight:700;font-size:16px;margin:12px 0 6px;}
+.ba-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;}
+.ba-col{background:#F8F9FF;border-radius:14px;padding:10px 14px;}
+.ba-col h4{font-size:14px;font-weight:800;margin:0 0 6px;}
+.ba-list{margin:0;padding-left:0;list-style:none;}
+.ba-list li{padding:4px 0;font-weight:600;}
+.move{font-size:12px;font-weight:800;border-radius:999px;padding:1px 8px;margin-left:4px;}
+.move.up{background:#D1FAE5;color:#065F46;} .move.down{background:#FEE2E2;color:#991B1B;} .move.same{background:#F3F4F6;color:var(--muted);}
+.whatif-why{font-size:14px;color:#4b5563;margin-top:10px;}
+.cmp-pick{display:flex;gap:8px;align-items:flex-start;}
+.cmp-pick .shiny-input-container{flex:1;margin-bottom:0;}
+.cmp-obs{font-size:14px;margin:6px 0 10px;padding-left:18px;}
+.cmp-crit{margin:12px 0;}
+.cmp-crit-head{display:flex;gap:10px;align-items:center;font-weight:800;font-size:14px;margin-bottom:4px;}
+.cmp-weight{font-weight:600;color:var(--muted);font-size:12px;}
+.cmp-row{display:grid;grid-template-columns:150px 1fr 170px;gap:10px;align-items:center;font-size:13px;margin:3px 0;}
+.cmp-bar{height:10px;background:#E5E7EB;border-radius:999px;overflow:hidden;}
+.cmp-bar i{display:block;height:100%;background:var(--brand-mid);border-radius:999px;}
+.cmp-row.lead .cmp-bar i{background:var(--brand);}
+.cmp-row.lead .cmp-name{font-weight:800;}
+.cmp-val{color:var(--muted);}
+.stab-control .shiny-input-container{margin-bottom:6px;}
+.stab-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px;}
+.stab-big{font-size:17px;font-weight:700;}
+.stab-gauge{height:14px;margin:10px 0 6px;}
+.stab-sub{font-size:14px;font-weight:800;margin:14px 0 6px;}
+.stab-line{background:var(--card);border-radius:14px;padding:8px 12px;margin-bottom:12px;font-size:14px;box-shadow:0 2px 8px rgba(31,41,55,.05);}
+.card-details{margin-top:10px;font-size:13px;}
+.card-details summary{cursor:pointer;color:var(--brand);font-weight:700;}
+.card-details ul{padding-left:18px;margin:6px 0 0;color:#4b5563;}
+.medal{font-size:20px;font-weight:800;color:var(--brand);}
+@media (max-width:560px){.ba-grid{grid-template-columns:1fr;} .cmp-row{grid-template-columns:96px 1fr 104px;} .cmp-pick{flex-direction:column;}}
+/* Compare: trade-off explorer */
+.tc-intro{margin-top:0;}
+.tc-toolbar{display:grid;grid-template-columns:180px 180px 1fr;gap:4px 14px;align-items:end;margin:8px 0 4px;}
+.tc-toolbar .shiny-input-container{width:100% !important;margin-bottom:6px;}
+.tc-toolbar label{font-weight:700;font-size:13px;}
+.tc-places{display:flex;gap:6px;align-items:flex-end;}
+.tc-places .shiny-input-container{flex:1;}
+.tc-buttons{display:flex;gap:2px;margin-bottom:6px;}
+.tc-buttons .btn-ghost{padding:8px 10px;font-size:13px;}
+.tc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px;}
+.tc-card{background:#FFFBF0;border:1.5px solid #FCD34D;border-radius:14px;padding:10px 12px;font-size:13px;}
+.tc-card-head{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;}
+.tc-card-head b{font-size:15px;}
+.tc-meta{color:var(--muted);font-size:12px;}
+.tc-scores{display:flex;flex-direction:column;gap:2px;font-weight:600;}
+.tc-obs{margin-top:6px;color:#4b5563;}
+@media (max-width:720px){.tc-toolbar{grid-template-columns:1fr 1fr;} .tc-places{grid-column:1 / -1;}}

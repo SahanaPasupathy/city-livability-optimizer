@@ -174,6 +174,8 @@ test_that("robustness_view words the engine's results without changing them", {
   expect_match(v$interpretation, "not probabilities")
   ex <- robustness_view(robustness_analysis(rec$X, answers = FAM, preference = "ratings", exact = TRUE, p_change = 0.25))
   expect_match(ex$assumption, "no random numbers")
+  expect_match(ex$headline, "Across all combinations of one-point changes")
+  expect_false(grepl("simulations", ex$headline))
   expect_equal(format_share(c(0, 0.004, 0.5, 0.996, 1)), c("0%", "<1%", "50%", ">99%", "100%"))
 })
 
@@ -206,13 +208,213 @@ test_that("preferences_view and about_view expose the editor and limits content"
   expect_equal(av$criteria$Criterion, CRITERIA)
 })
 
-test_that("the report includes what changed since the previous answers", {
+test_that("the report includes what changed compared with the original answers", {
   new <- FAM; new[c("Safety", "Environment")] <- c(2L, 5L)
   rec <- compute_recommendation(new, XM, LOWC)
   chg <- scenario_view(FAM, new, XM, LOWC)
   html <- build_report_html(rec, XM, LOWC, "edited", NULL, d = DATA, meta = META, changes = chg)
-  expect_true(grepl("What changed since my previous answers", html, fixed = TRUE))
+  expect_true(grepl("What changed compared with my original answers", html, fixed = TRUE))
   expect_true(grepl("Safety from 5 to 2", html, fixed = TRUE))
   expect_equal(lengths(regmatches(html, gregexpr("<tr>\\s*<td>", html)))[1], 36)   # ranking rows untouched
   expect_false(grepl("What changed", build_report_html(rec, XM, LOWC, "edited", NULL, changes = scenario_view(new, new, XM, LOWC))))
+})
+
+test_that("map hover cards carry data notes, including for places left out", {
+  md <- load_map_paths(file.path(ROOT_DIR, "data", "map", "india_map_paths.csv"))
+  notes <- setNames(coverage_summary(DATA, META)$Note, DATA$State); notes <- notes[nzchar(notes)]
+  rec <- compute_recommendation(FAM, XM, LOWC)
+  html <- as.character(render_india_map(rec$topsis$results, XM, LOWC, md, notes = notes))
+  expect_true(grepl("no measured data for Connectivity", html, fixed = TRUE))
+  ex <- compute_recommendation(FAM, XM, LOWC, TRUE)
+  html_ex <- as.character(render_india_map(ex$topsis$results, XM, LOWC, md, notes = notes))
+  expect_true(grepl("no measured data for Connectivity", html_ex, fixed = TRUE))       # Lakshadweep left out
+  expect_equal(lengths(regmatches(html_ex, gregexpr("Excluded from this ranking", html_ex, fixed = TRUE))), 7)
+  plain <- as.character(render_india_map(rec$topsis$results, XM, LOWC, md))
+  expect_false(grepl("no measured data", plain, fixed = TRUE))
+})
+
+ORIG <- setNames(c(4L, 3L, 5L, 2L, 4L, 1L, 3L), CRITERIA)
+
+test_that("whatif_view compares several changed ratings with the original answers", {
+  new <- ORIG; new[c("Safety", "Environment")] <- c(5L, 4L)
+  orig_copy <- ORIG
+  wv <- whatif_view(ORIG, new, XM, LOWC)
+  expect_identical(ORIG, orig_copy)                                   # baseline untouched
+  expect_false(wv$unchanged)
+  expect_equal(wv$changed$Criterion, c("Safety", "Environment"))
+  base <- top_k(compute_recommendation(ORIG, XM, LOWC)$topsis, 3)$State
+  scen <- top_k(compute_recommendation(new, XM, LOWC)$topsis, 3)$State
+  expect_equal(wv$before$State, base)
+  expect_equal(wv$after$State, scen)                                  # same engine
+  expect_equal(wv$before$Status, ifelse(base %in% scen, "stays", "leaves"))
+  expect_equal(wv$after$New, !scen %in% base)
+  res0 <- compute_recommendation(ORIG, XM, LOWC)$topsis$results
+  was <- res0$Rank[match(scen, res0$State)]
+  expect_equal(wv$after$Was, was)
+  expect_equal(wv$after$Move, move_label(was, wv$after$Rank))
+  expect_equal(move_label(c(5, 1, 3, NA), c(1, 4, 3, 2)), c("▲ 4", "▼ 3", "same", "new"))
+  expect_true(wv$new_top)
+  expect_match(wv$summary, "changes from Delhi to Lakshadweep")
+  expect_match(wv$explanation[1], "Safety now counts 29% of your result \\(was 8%\\)")
+  expect_true(any(grepl("Lakshadweep moves ahead of Delhi mainly because Safety counts more", wv$explanation)))
+})
+
+test_that("whatif_view handles unchanged answers, invalid ratings and the exclusion rule", {
+  same <- whatif_view(ORIG, ORIG, XM, LOWC)
+  expect_true(same$unchanged)
+  expect_length(same$explanation, 0)
+  expect_match(same$summary, "original answers")
+  bad <- ORIG; bad["Safety"] <- 7L
+  expect_error(whatif_view(ORIG, bad, XM, LOWC), "whole number from 1 to 5")
+  expect_error(whatif_view(ORIG, ORIG[1:6], XM, LOWC), "all seven")
+  new <- ORIG; new["Safety"] <- 5L
+  ex <- whatif_view(ORIG, new, XM, LOWC, exclude_low = TRUE)
+  expect_false(any(c(ex$before$State, ex$after$State, ex$moves$State) %in% LOWC))
+  # Ties: equal answers everywhere still give a valid, deterministic comparison.
+  eq <- whatif_view(EQUAL_ANSWERS, replace(EQUAL_ANSWERS, "Health", 4L), XM, LOWC)
+  expect_identical(eq, whatif_view(EQUAL_ANSWERS, replace(EQUAL_ANSWERS, "Health", 4L), XM, LOWC))
+  expect_equal(nrow(eq$after), 3)
+})
+
+test_that("stability_summary_view gives one label, one headline and bars from the existing engines", {
+  ss <- stability_summary_view(ORIG, XM, DATA, META, LOWC)
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  rb <- robustness_analysis(rec$X, answers = ORIG, preference = "ratings", exact = TRUE, p_change = 0.25)
+  expect_equal(ss$top1_share, rb$baseline$top1_prop)
+  expect_equal(ss$label, if (ss$top1_share >= 0.9) "Holds up" else if (ss$top1_share >= 0.5) "Usually holds" else "Close call")
+  expect_equal(ss$label, "Close call")
+  expect_match(ss$headline, "Delhi stays your #1 in 48% of the answer variations")
+  expect_true(all(top_k(rec$topsis, 3)$State %in% ss$places$State))
+  expect_false(is.unsorted(ss$places$Rank))
+  expect_equal(ss$places$Top3_Share, rb$summary$Top3_Prop[match(ss$places$State, rb$summary$State)])
+  expect_lte(nrow(ss$places), 5)
+  expect_false(grepl("probab", paste(ss$headline, ss$sentence), ignore.case = TRUE))
+  expect_match(ss$caveat, "not the chance")
+  hold <- stability_summary_view(setNames(rep(5L, 7), CRITERIA), XM, DATA, META, LOWC)
+  expect_true(hold$label %in% c("Holds up", "Usually holds", "Close call"))
+  ex <- stability_summary_view(ORIG, XM, DATA, META, LOWC, exclude_low = TRUE)
+  expect_false(any(ex$places$State %in% LOWC))
+  expect_false(identical(stability_summary_view(ORIG, XM, DATA, META, LOWC, p_change = 0.5)$top1_share, ss$top1_share))
+})
+
+test_that("comparison_bars_view marks leaders, near-ties and coverage consistently with the scores", {
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  st <- c("Delhi", "Kerala", "Chandigarh")
+  cb <- comparison_bars_view(rec, st, DATA, META, LOWC)
+  expect_equal(nrow(cb$bars), 21)
+  expect_equal(unique(cb$bars$Criterion), weights_table(rec$ahp)$Criterion)
+  expect_equal(cb$bars$Score, unname(XM[cbind(cb$bars$State, cb$bars$Criterion)]))
+  for (cn in unique(cb$bars$Criterion)) {
+    x <- cb$bars[cb$bars$Criterion == cn, ]
+    expect_equal(x$Tie[1], max(x$Score) - min(x$Score) < NEAR_TIE_SCORE)
+    if (any(x$Leads)) {
+      s <- sort(x$Score, decreasing = TRUE)
+      expect_gte(s[1] - s[2], NEAR_TIE_SCORE)
+      expect_equal(x$State[x$Leads], x$State[which.max(x$Score)])
+    }
+  }
+  # Health: Delhi 0.89 vs Kerala 0.87 is within the near-tie margin, so nobody "leads".
+  expect_false(any(cb$bars$Leads[cb$bars$Criterion == "Health"]))
+  expect_true(any(grepl("nearly tied overall", cb$observations)))
+  expect_equal(cb$bars$Flag[cb$bars$State == "Chandigarh" & cb$bars$Criterion == "Housing"], "few indicators")
+  expect_match(cb$badges[["Chandigarh"]], "^Limited data:")
+  expect_equal(cb$badges[["Kerala"]], "")
+  expect_false(any(grepl("Pareto|dominat", cb$observations)))
+})
+
+test_that("coverage badges and place reasons come from the data-quality functions", {
+  expect_equal(coverage_badge(DATA, META, "Lakshadweep"), "Limited data: Connectivity estimated; Health, Housing partial")
+  expect_equal(coverage_badge(DATA, META, "Kerala"), "")
+  expect_match(coverage_badge(DATA, META, "Telangana"), "^Data gaps: Connectivity partial")
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  pr <- place_reasons(rec, DATA, META, "Kerala")
+  expect_equal(pr, recommendation_view(ORIG, XM, DATA, META, LOWC)$reasons[["Kerala"]])
+  expect_match(pr$Evidence[pr$Criterion == "Health"], "Immunisation coverage")
+})
+
+test_that("tradeoff_chart_data uses the real scores, ranks and axes", {
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  cd <- tradeoff_chart_data(rec, "Safety", "Economy", DATA, META, c("Kerala", "Goa"), LOWC)
+  expect_equal(nrow(cd$points), 36)
+  expect_equal(cd$points$X, unname(XM[cd$points$State, "Safety"]))
+  expect_equal(cd$points$Y, unname(XM[cd$points$State, "Economy"]))
+  res <- rec$topsis$results
+  expect_equal(cd$points$Rank, res$Rank[match(cd$points$State, res$State)])
+  expect_equal(cd$points$Match, round(res$Closeness[match(cd$points$State, res$State)], 2))
+  expect_equal(sort(cd$points$State[cd$points$Top3]), sort(top_k(rec$topsis, 3)$State))
+  expect_setequal(cd$points$State[cd$points$Frontier], tradeoff_view(rec, "Safety", "Economy")$frontier$State)
+  # Swapping or changing an axis changes only that coordinate.
+  sw <- tradeoff_chart_data(rec, "Economy", "Safety", DATA, META, c("Kerala", "Goa"), LOWC)
+  expect_equal(sw$points$X, cd$points$Y); expect_equal(sw$points$Y, cd$points$X)
+  ch <- tradeoff_chart_data(rec, "Safety", "Health", DATA, META, c("Kerala", "Goa"), LOWC)
+  expect_equal(ch$points$X, cd$points$X)
+  expect_equal(ch$points$Y, unname(XM[ch$points$State, "Health"]))
+  expect_equal(ch$selected, cd$selected)                           # selection kept
+  expect_match(cd$x_title, "^Safety \\(relative score\\)")
+  expect_error(tradeoff_chart_data(rec, "Safety", "Safety", DATA, META), "two different")
+  expect_error(tradeoff_chart_data(rec, "Safety", "Wealth", DATA, META), "two criteria")
+})
+
+test_that("tradeoff_chart_data cards: selection order, positions, observation and warnings", {
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  cd <- tradeoff_chart_data(rec, "Safety", "Economy", DATA, META, c("Lakshadweep", "Goa"), LOWC)
+  expect_equal(cd$cards$State, c("Lakshadweep", "Goa"))
+  expect_equal(cd$cards$Pos_X, unname(rank(-XM[, "Safety"], ties.method = "min")[c("Lakshadweep", "Goa")]))
+  expect_equal(cd$cards$Rank, rec$topsis$results$Rank[match(cd$cards$State, rec$topsis$results$State)])
+  expect_match(cd$cards$Observation[1], "top third on both Safety and Economy. No other place scores at least as well on both.")
+  expect_match(cd$cards$Observation[2], "^Stronger on Economy")
+  expect_match(cd$cards$Warning[1], "^Limited data:")
+  expect_equal(cd$cards$Warning[2], "")
+  # The axis criterion itself is estimated for Lakshadweep on Connectivity.
+  ce <- tradeoff_chart_data(rec, "Connectivity", "Health", DATA, META, "Lakshadweep", LOWC)
+  expect_equal(ce$cards$Warning, "Connectivity score is estimated, not measured. Health is based on only some of its indicators.")
+  expect_true(ce$points$Estimated[ce$points$State == "Lakshadweep"])
+  expect_false(grepl("Pareto|dominat", paste(cd$cards$Observation, collapse = " ")))
+})
+
+test_that("tradeoff_chart_data handles empty, invalid, too many and excluded selections", {
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  empty <- tradeoff_chart_data(rec, "Health", "Education", DATA, META, character(0), LOWC)
+  expect_equal(nrow(empty$cards), 0); expect_false(any(empty$points$Selected)); expect_equal(nrow(empty$points), 36)
+  expect_equal(nrow(tradeoff_chart_data(rec, "Health", "Education", DATA, META, c("Atlantis", "", NA), LOWC)$cards), 0)
+  four <- tradeoff_chart_data(rec, "Health", "Education", DATA, META, c("Goa", "Kerala", "Punjab", "Bihar"), LOWC)
+  expect_equal(four$selected, c("Goa", "Kerala", "Punjab"))
+  ex <- compute_recommendation(ORIG, XM, LOWC, exclude_low = TRUE)
+  ce <- tradeoff_chart_data(ex, "Health", "Education", DATA, META, c("Lakshadweep", "Goa"), LOWC)
+  expect_equal(nrow(ce$points), 32)
+  expect_equal(ce$selected, "Goa")
+  expect_equal(ce$excluded_selected, "Lakshadweep")
+  expect_equal(ce$cards$Rank, ex$topsis$results$Rank[ex$topsis$results$State == "Goa"])
+  expect_match(ce$note, "among the 32 places ranked")
+})
+
+test_that("tradeoff_chart_data never draws a missing score as zero", {
+  rec <- compute_recommendation(ORIG, XM, LOWC)
+  rec$X["Goa", "Safety"] <- NA                         # simulate a missing criterion score
+  cd <- tradeoff_chart_data(rec, "Safety", "Economy", DATA, META, "Goa", LOWC)
+  expect_equal(cd$not_plotted, "Goa")
+  expect_false("Goa" %in% cd$points$State)
+  expect_equal(nrow(cd$points), 35)
+  expect_equal(nrow(cd$cards), 0)
+  html <- htmltools::renderTags(render_tradeoff_plot(cd))$html
+  expect_true(grepl("Not plotted (missing score): Goa.", html, fixed = TRUE))
+})
+
+test_that("toggle_place adds, removes and caps the selection", {
+  v <- DATA$State
+  expect_equal(toggle_place(c("Goa", "Kerala"), "Punjab", v), c("Goa", "Kerala", "Punjab"))
+  expect_equal(toggle_place(c("Goa", "Kerala"), "Goa", v), "Kerala")                 # deselect
+  expect_equal(toggle_place(c("Goa", "Kerala", "Punjab"), "Bihar", v), c("Kerala", "Punjab", "Bihar"))
+  expect_equal(toggle_place(character(0), "Goa", v), "Goa")
+  expect_equal(toggle_place(NULL, "Goa", v), "Goa")
+  expect_equal(toggle_place(c("Goa"), "Atlantis", v), "Goa")                          # invalid click ignored
+  expect_equal(toggle_place(c("Goa", "Atlantis"), NA, v), "Goa")
+})
+
+test_that("resolve_axes never returns two identical criteria", {
+  expect_equal(resolve_axes("Safety", "Economy"), c("Safety", "Economy"))
+  expect_equal(resolve_axes("Economy", "Economy", c("Safety", "Economy")), c("Economy", "Safety"))   # x changed: swap
+  expect_equal(resolve_axes("Safety", "Safety", c("Safety", "Economy")), c("Economy", "Safety"))     # y changed: swap
+  expect_equal(resolve_axes("Health", "Health"), c("Health", "Education"))
+  for (a in CRITERIA) for (b in CRITERIA) expect_false(do.call(identical, as.list(resolve_axes(a, b, c("Safety", "Economy")))))
 })

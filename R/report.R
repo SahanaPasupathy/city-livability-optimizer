@@ -33,8 +33,8 @@ table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{text-align:left;
 #' @param state_type named vector: State/UT name -> "State" or "UT".
 #' @param shortlist optional States/UTs the user chose to compare.
 #' @param scenario optional compute_recommendation() result for a what-if scenario.
-#' @param changes optional scenario_view() result comparing the user's previous
-#'   answers with the current ones (the "edit my answers" what-if).
+#' @param changes optional scenario_view() result comparing the user's original
+#'   answers with the current ones (the "change my priorities" what-if).
 #' @param d,meta optional dataset and indicator metadata; when given, the report
 #'   adds indicator evidence, coverage notes and trade-off sentences.
 #' @return a character string (HTML).
@@ -92,7 +92,7 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
 
   # Optional sections. Their table rows carry a class, so the ranking table is
   # the only one written as plain <tr><td> rows (analysis/09_report_check.R counts them).
-  sec <- 3
+  sec <- 2
   next_sec <- function(title) { sec <<- sec + 1; tg$h2(sprintf("%d. %s", sec, title)) }
   shortlist <- intersect(shortlist, rownames(rec$X))
   compare_part <- if (length(shortlist) > 0) {
@@ -132,7 +132,7 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
                                                        nrow(sres), n)))
   }
   changes_part <- if (!is.null(changes) && nrow(changes$changed) > 0) {
-    htmltools::tagList(next_sec("What changed since my previous answers"),
+    htmltools::tagList(next_sec("What changed compared with my original answers"),
             tg$ul(lapply(changes$sentences, tg$li)),
             tg$table(tg$thead(tg$tr(lapply(c("State/UT", "Before", "Now", "Change"), tg$th))),
                      tg$tbody(lapply(seq_len(nrow(changes$moves)), function(i) {
@@ -168,14 +168,14 @@ build_report_html <- function(rec, X, low_conf = character(0), source = "questio
     tg$h2("2. My top 3"),
     if (!is.null(stab)) tg$p(class = "note", paste(stab$sentences[c(1, length(top$State) + 2)], collapse = " ")),
     top_cards,
-    tg$h2(sprintf("3. Full ranking (%d States/UTs)", n)),
+    changes_part, compare_part, scenario_part, notes_part,
+    next_sec(sprintf("Appendix: full ranking (%d States/UTs)", n)),
     tg$p(class = "note", MATCH_NOTE),
     tg$table(tg$thead(tg$tr(lapply(c("Rank", "State/UT", "Type", "Relative match", "Note"), tg$th))),
              tg$tbody(rank_rows)),
     if (length(rec$excluded) > 0) {
       tg$p(class = "note", "Not ranked (left out by choice): ", paste(rec$excluded, collapse = ", "))
     },
-    changes_part, compare_part, scenario_part, notes_part,
     next_sec("How this was calculated"),
     tg$ol(lapply(METHOD_STEPS, tg$li)),
     next_sec("Limits to keep in mind"),

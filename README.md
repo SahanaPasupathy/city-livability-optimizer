@@ -85,13 +85,13 @@ Features: flashcard questions whose hints say what is and is not measured, three
 
 The interface is the original one; UI/UX work is being taken over by another team member. Features developed since are reachable through plain extra tabs on the results screen, in the original style:
 
-- **Trade-offs:** choose two criteria; a scatter plot marks the Pareto-efficient States/UTs (no other place is at least as good on both and better on one) and explains where your #1 stands (`R/pareto.R`, `R/atlas.R`).
-- **Robustness:** re-runs your ranking under slightly different ratings or weights (simulation count and seed selectable) and shows, next to your actual rank and match score, how often each place is ranked 1st or in the top 3, 5 and 10, its median simulated rank with a 5-95% range, competitive alternatives and data notes; the full table downloads as CSV (`R/robustness.R`).
-- **What if:** change one rating and compare the new ranking with yours (`R/scenario.R`).
+- **Compare:** a trade-off scatter plot of two criteria you choose (starting on your two most important), one point per State/UT; select up to three places by clicking points or searching, and see a card for each (rank, relative match, both scores, one observation, data warnings). All seven criteria and the original indicator values are available on request (`tradeoff_chart_data()`, `R/atlas.R`).
+- **Stability:** one question (how sure you are of your answers), a label, how often your #1 stays first and bars for the main alternatives, computed exactly over every combination of one-point answer changes (`stability_summary_view()`, `R/robustness.R`).
+- **What if?:** change several ratings, see the original and new top 3 side by side with what moved and why, and go back (`whatif_view()`, `R/scenario.R`).
 - **States & UTs:** all 36 with search, current rank and score, and a comparison of up to three; the details show relative scores with positions among the places ranked, coverage, and the original indicator values with units, status and provenance (`R/catalogue.R`, `place_detail()`).
 - **News:** headlines from public RSS feeds (The Hindu, Mongabay India). **Off by default** since the product review (not about particular places, not used in the rankings, and it started a background process and wrote a cache file); `LIVABILITY_NEWS=on` switches it on (`R/news.R`).
 
-The current screens are still the original tab-based interface: the review changed what the tabs say and compute, not how they are laid out. The Trade-offs chart, the Robustness controls (method, simulation count, seed) and the single-rating What if tab are still there until the redesign replaces them; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#handover-to-the-uiux-teammate) lists exactly what is visible now and what the redesign needs to change. The interface itself belongs to the UI/UX teammate. `R/view_models.R` provides tested, Shiny-free functions for the redesigned screens (shortlist, comparison, place details, scenario, stability, catalogue); see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#5-view-model-contracts).
+The current screens are the original tab-based interface with targeted functional changes: **Top 3** cards with "why it matches", one trade-off and data warnings; **What if?** to change several ratings, see your original and new top 3 side by side and go back; **Compare** places on a two-criterion trade-off chart (click points or search, cards for up to three places); **Stability**, a short visual answer to "could small changes to my answers change this?". [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#handover-to-the-uiux-teammate) lists what the visual redesign still needs to do. The interface itself belongs to the UI/UX teammate. `R/view_models.R` provides tested, Shiny-free functions for the redesigned screens (shortlist, comparison, place details, scenario, stability, catalogue); see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#5-view-model-contracts).
 
 The downloaded report summarises the same results: reasons with indicator evidence, stability, data notes for the places it names, the comparison with plain trade-offs, the what-if scenario (if one is set), the limits and a "before you move" checklist. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for how presentation and calculations are separated.
 
@@ -137,7 +137,7 @@ Source the scripts in `analysis/` in order from the project root, for example `s
 
 ### Automated tests
 
-**R tests** (need R). Run `source("analysis/11_run_tests.R")` (needs `install.packages("testthat")`). The 89 tests (555 expectations) cover:
+**R tests** (need R). Run `source("analysis/11_run_tests.R")` (needs `install.packages("testthat")`). The 102 tests (738 expectations) cover:
 
 - AHP: the difference rule, a perfectly consistent matrix, Saaty's textbook 3x3 example and contradictory answers.
 - TOPSIS: a small case checked by hand and rejection of bad inputs.
@@ -178,8 +178,8 @@ Last full run: 17 October 2026, R 4.6.1 on macOS (arm64), after the product revi
 
 | Area | Status |
 |---|---|
-| Calculations, data pipeline and view models | 89 testthat tests (555 expectations) pass; `analysis/01` passes (`02`-`06` and `10` were not re-run: they only rewrite figures and tables, and no score changed). |
-| Shiny app (`app/app.R`, `app/www/`) | `analysis/08_app_check.R` 29/29; `analysis/12_server_check.R` drives the server logic with `shiny::testServer` (25/25: top 3 notes, trade-offs, several edited answers and going back, report, and the same included/excluded places in every tab); the app starts and serves over HTTP. The browser smoke test was updated but **not run** (Chromium for Playwright is not installed on this machine). |
+| Calculations, data pipeline and view models | 102 testthat tests (738 expectations) pass; `analysis/01` passes (`02`-`06` and `10` were not re-run: they only rewrite figures and tables, and no score changed). |
+| Shiny app (`app/app.R`, `app/www/`) | `analysis/08_app_check.R` 29/29; `analysis/12_server_check.R` drives the server logic with `shiny::testServer` (53/53: tabs without technical controls or advanced sections, Top 3 cards, the What if? workflow, the Compare trade-off explorer (axes, selection sync, cards), Stability, report, and the same included/excluded places in every tab); the app starts and serves over HTTP. The browser smoke test was updated but **not run** (Chromium for Playwright is not installed on this machine). |
 | Map and report (`R/map.R`, `R/report.R`) | `analysis/07_map.R` 15/15, `09_report_check.R` 17/17; `outputs/maps/` and `outputs/reports/` regenerated. |
 | Data, documentation, committed results | Python audit (19/19 structural), repository checks (18/18) and 25 Python unit tests pass (see [`docs/TESTING.md`](docs/TESTING.md)). |
 | Not tested | Visual design and accessibility (UI/UX teammate), the browser smoke test (see above), deployment to a Shiny server. Neither CI job has run on GitHub yet. |

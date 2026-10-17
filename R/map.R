@@ -53,11 +53,12 @@ closeness_colours <- function(closeness, limits = c(0, 1)) {
 }
 
 #' Build the hover card (HTML text) for one State/UT.
-map_tooltip <- function(state, rank, closeness, scores, low_confidence) {
+map_tooltip <- function(state, rank, closeness, scores, low_confidence, note = "") {
   bars <- paste(sprintf(
     "<div class='ilm-row'><span>%s</span><span class='ilm-bar'><i style='width:%.0f%%'></i></span><b>%.2f</b></div>",
     names(scores), 100 * scores, scores), collapse = "")
   warn <- if (low_confidence) "<div class='ilm-warn'>Limited data coverage</div>" else ""
+  if (nzchar(note)) warn <- paste0(warn, "<div class='ilm-sub'>", htmltools::htmlEscape(note), "</div>")
   sprintf("<div class='ilm-title'>%s <em>#%d</em></div><div class='ilm-sub'>Relative match %.2f</div>%s%s",
           htmltools::htmlEscape(state), rank, closeness, bars, warn)
 }
@@ -111,11 +112,16 @@ india_map_assets <- function() {
   document.addEventListener('mouseout',function(e){var t=target(e);if(!t)return;
     tipEl().style.display='none';
     same(t.getAttribute('data-state'),function(n){n.classList.remove('ilm-hover');});});
-  document.addEventListener('click',function(e){var t=target(e);if(!t)return;
-    var name=t.getAttribute('data-state');
-    document.querySelectorAll('.ilm-selected').forEach(function(n){n.classList.remove('ilm-selected');});
-    same(name,function(n){n.classList.add('ilm-selected');});
-    if(window.Shiny&&Shiny.setInputValue){Shiny.setInputValue('map_selected',name,{priority:'event'});}});
+  function choose(t){var name=t.getAttribute('data-state');
+    var inp=t.getAttribute('data-click-input');
+    if(inp){if(window.Shiny&&Shiny.setInputValue){Shiny.setInputValue(inp,name,{priority:'event'});}return;}
+    document.querySelectorAll('.ilm-map .ilm-selected').forEach(function(n){n.classList.remove('ilm-selected');});
+    same(name,function(n){if(n.closest('.ilm-map'))n.classList.add('ilm-selected');});
+    if(window.Shiny&&Shiny.setInputValue){Shiny.setInputValue('map_selected',name,{priority:'event'});}}
+  document.addEventListener('click',function(e){var t=target(e);if(t)choose(t);});
+  // Points with data-click-input (the trade-off chart) are buttons: Enter or Space selects them.
+  document.addEventListener('keydown',function(e){var t=target(e);
+    if(t&&t.getAttribute('data-click-input')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();choose(t);}});
 })();
 )"
   htmltools::tagList(htmltools::tags$style(htmltools::HTML(css)),
@@ -128,9 +134,11 @@ india_map_assets <- function() {
 #' @param X numeric matrix of the seven criterion scores (rows named by State).
 #' @param low_confidence character vector of States/UTs with thin data.
 #' @param map_data outline table from load_map_paths().
+#' @param notes optional named character vector of data notes per State/UT
+#'   (e.g. coverage_summary()$Note), shown in the hover card.
 #' @return htmltools tag (map + legend). Add india_map_assets() to the page once.
 render_india_map <- function(results, X, low_confidence = character(0),
-                             map_data = load_map_paths()) {
+                             map_data = load_map_paths(), notes = NULL) {
   unknown <- setdiff(results$State, map_data$State)
   if (length(unknown) > 0) {
     stop("State names do not match between the map and the results: ",
@@ -148,10 +156,12 @@ render_india_map <- function(results, X, low_confidence = character(0),
   attrs <- function(i) {
     st <- map_data$State[i]
     tip <- if (included[i]) {
-      map_tooltip(st, res$Rank[i], res$Closeness[i], X[st, ], st %in% low_confidence)
+      map_tooltip(st, res$Rank[i], res$Closeness[i], X[st, ], st %in% low_confidence,
+                  if (!is.null(notes) && st %in% names(notes)) notes[[st]] else "")
     } else {
-      sprintf("<div class='ilm-title'>%s</div><div class='ilm-sub'>Excluded from this ranking</div>",
-              htmltools::htmlEscape(st))
+      paste0(sprintf("<div class='ilm-title'>%s</div><div class='ilm-sub'>Excluded from this ranking</div>",
+                     htmltools::htmlEscape(st)),
+             if (!is.null(notes) && st %in% names(notes)) sprintf("<div class='ilm-sub'>%s</div>", htmltools::htmlEscape(notes[[st]])) else "")
     }
     list(`data-state` = st, `data-tip` = tip)
   }

@@ -1,7 +1,7 @@
 // Smoke test of the real Shiny app with its original interface: the logo,
 // questionnaire, presets, results (numbers compared with values computed in R),
 // tabs, ranking table, map, low-confidence switch, report, invalid input, and the
-// added tabs (Trade-offs, Robustness, What if, States & UTs, News).
+// tabs (What if?, Compare, Stability, States & UTs; News is off by default).
 // It checks that the app and its calculations work, not how the interface looks.
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -35,89 +35,83 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   ok('questions: seven answers open the results', (await p.textContent('.result-head h2')).includes('Your livability matches'));
 
   // Results for answers 4,3,5,2,4,1,3, compared with R.
+  const tab = async (name) => { await p.click(`#result_tabs .nav-link >> text="${name}"`); await idle(p); };
   const n1 = await names(p); const m = await p.$$eval('.match-label', e => e.map(x => x.textContent));
+  const t3 = await p.textContent('#top3');
   ok('results: top 3 match R (Delhi, Kerala, Chandigarh)', n1.join('|') === 'Delhi|Kerala|Chandigarh', n1.join(', '));
-  ok('results: relative match scores match R (0.79, 0.79, 0.78)', m[0].includes('Relative match: 0.79') && m[1].includes('0.79') && m[2].includes('0.78'));
-  ok('results: stability counts and the alternative without limited-coverage places are shown', (await p.textContent('#top3')).includes('small changes to your answers') &&
-     (await p.textContent('#top3')).includes('Without places with limited data coverage, your top 3 would be Delhi, Kerala, Punjab'));
-  ok('results: original tabs plus the added ones', (await p.$$eval('#result_tabs .nav-link', e => e.map(x => x.textContent.trim()))).join('|') ===
-     'Top 3|Map|Full ranking|My weights|Trade-offs|Robustness|What if|States & UTs|News|How it works|About and limits');
-  await p.click('#result_tabs .nav-link >> text=My weights'); await idle(p);
+  ok('results: relative match to 2 decimals (0.79, 0.79, 0.78)', m[0].includes('Relative match 0.79') && m[1].includes('0.79') && m[2].includes('0.78'));
+  ok('results: plain tabs, What if? second, no Robustness/Trade-offs/News', (await p.$$eval('#result_tabs .nav-link', e => e.map(x => x.textContent.trim()))).join('|') ===
+     'Top 3|What if?|Compare|Stability|Map|What matters to you|Full ranking|States & UTs|How it works|About and limits');
+  ok('results: cards show why it matches and a trade-off, no medals', t3.includes('Why it matches') && (t3.match(/Trade-off:/g) || []).length === 3 && !(await p.$$('.top-card.gold')).length);
+  ok('results: stability label, coverage warning and alternative top 3', t3.includes('Close call') && t3.includes('Limited data: Housing based on few indicators') &&
+     t3.includes('Without places with limited data: Delhi, Kerala, Punjab'));
+  ok('results: indicator data collapsed behind "Show the data"', (await p.$$('.top-card details:not([open])')).length === 3);
+  ok('results: no technical controls or advanced sections anywhere', (await p.$$('#rb_n, #rb_seed, #rb_method, #rb_run, #atlas_x')).length === 0 && (await p.$$('#tc_x')).length === 1 &&
+     !/advanced users/i.test(await p.textContent('body')));
+
+  await tab('What matters to you');
   const w = await p.$$eval('.w-row', r => r.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
-  ok('weights: AHP weights match R (Health 39.2%, Environment 2.3%)', w[0].endsWith('Health 39.2%') && w[6].endsWith('Environment 2.3%'), w[0] + ' / ' + w[6]);
-  ok('weights: plain explanation instead of the consistency ratio', (await p.textContent('.cr-box')).includes('times as much') && !(await p.textContent('.cr-box')).includes('0.036'));
-  await p.click('#result_tabs .nav-link >> text=Full ranking'); await idle(p);
+  ok('weights: match R (Health 39%, Environment 2%) in plain words', w[0].endsWith('Health 39%') && w[6].endsWith('Environment 2%') && !(await p.textContent('#weights')).includes('Consistency ratio'), w[0] + ' / ' + w[6]);
+  await tab('Full ranking');
   const rows = () => p.$$eval('#rank-table tbody tr', r => r.filter(x => x.style.display !== 'none').length);
-  ok('ranking: 36 rows', (await rows()) === 36);
+  ok('ranking: 36 rows, no D+/D- columns', (await rows()) === 36 && !(await p.textContent('#rank-table')).includes('D+'));
   await p.fill('.table-search', 'pradesh'); await p.dispatchEvent('.table-search', 'input');
   ok('ranking: search filters (5 Pradesh)', (await rows()) === 5);
   await p.fill('.table-search', ''); await p.dispatchEvent('.table-search', 'input');
   await p.click('#rank-table th >> nth=1');
   ok('ranking: sorting by name works', (await p.$eval('#rank-table tbody tr td:nth-child(2)', e => e.textContent.trim())) === 'A&N Islands');
-  await p.click('#result_tabs .nav-link >> text=Map'); await idle(p);
+  await tab('Map');
   await p.click('path[data-state="Kerala"]'); await idle(p);
-  ok('map: selecting Kerala shows rank 2 of 36 (matches R)', (await p.textContent('.map-detail h4')).includes('Kerala: rank 2 of 36'));
+  ok('map: selecting Kerala shows rank 2 of 36 with a card (matches R)', (await p.textContent('.map-detail h4')).includes('Kerala: rank 2 of 36') && (await p.textContent('.map-detail')).includes('Why it matches'));
   await p.evaluate(() => Shiny.setInputValue('map_selected', 'Atlantis', { priority: 'event' })); await idle(p);
   ok('map: an unknown name sent from the browser is ignored', (await p.textContent('.map-detail h4')).includes('Kerala'));
   await p.evaluate(() => Shiny.setInputValue('answer', 9, { priority: 'event' })); await idle(p);
   ok('invalid answer sent from the browser is ignored (results unchanged)', (await p.textContent('.result-head h2')).includes('Your livability matches'));
 
-  // -- Trade-offs: Pareto sets compared with pareto_front() in R --
-  const tab = async (name) => { await p.click(`#result_tabs .nav-link >> text="${name}"`); await idle(p); };
-  const eff = () => p.$$eval('.atlas-pt.is-efficient', e => e.map(x => x.getAttribute('data-state')).sort().join('|'));
-  await tab('Trade-offs');
-  ok('trade-offs: starts on your two most important criteria (Health, Education)', (await p.inputValue('#atlas_x')) === 'Health' && (await p.inputValue('#atlas_y')) === 'Education');
-  await p.selectOption('#atlas_x', 'Safety'); await p.selectOption('#atlas_y', 'Economy'); await idle(p);
-  ok('trade-offs: Safety vs Economy efficient set matches R', (await eff()) === 'Chandigarh|Ladakh|Lakshadweep|Nagaland|Tripura');
-  ok('trade-offs: 36 points and a plain explanation for your #1 (Delhi)', (await p.$$('.atlas-pt')).length === 36 && (await p.textContent('#atlas')).includes('Your #1, Delhi') &&
-     !(await p.textContent('#atlas')).includes('Pareto'));
-  await p.selectOption('#atlas_x', 'Health'); await p.selectOption('#atlas_y', 'Education'); await idle(p);
-  ok('trade-offs: Health vs Education efficient set matches R', (await eff()) === 'Delhi|Kerala|Lakshadweep|Maharashtra|Punjab');
-  await p.selectOption('#atlas_y', 'Health'); await idle(p);
-  ok('trade-offs: the same criterion twice gives a message', (await p.textContent('#atlas')).includes('Choose two different criteria'));
-  await p.selectOption('#atlas_y', 'Education'); await idle(p);
+  // -- Compare: trade-off explorer (chart + search, synchronised) --
+  await tab('Compare');
+  await p.waitForSelector('.tc-pt');
+  ok('compare: axes start on your top two criteria (Health, Education)', (await p.inputValue('#tc_x')) === 'Health' && (await p.inputValue('#tc_y')) === 'Education');
+  ok('compare: 36 points, your top 3 selected and labelled', (await p.$$('.tc-pt')).length === 36 && (await p.$$('.tc-pt.is-selected')).length === 3);
+  ok('compare: cards match R (Delhi #1 of 36, relative match 0.79, Health 0.89 5th)', (await p.textContent('#tc_cards')).includes('#1 of 36 · relative match 0.79') &&
+     (await p.textContent('#tc_cards')).includes('Health 0.89 (5th)'));
+  await p.click('.tc-pt[data-state="Goa"]'); await idle(p);
+  ok('compare: clicking a point adds it to the search box and the cards (earliest dropped)',
+     (await p.$$eval('#cmp_places option', o => o.map(x => x.value))).join('|') === 'Kerala|Chandigarh|Goa' && (await p.textContent('#tc_cards')).includes('Goa'));
+  await p.click('.tc-pt[data-state="Goa"]'); await idle(p);
+  ok('compare: clicking it again removes it', !(await p.textContent('#tc_cards')).includes('Goa'));
+  await p.selectOption('#tc_y', 'Safety'); await idle(p);
+  ok('compare: changing an axis keeps the selection', (await p.$$('.tc-pt.is-selected')).length === 2 && (await p.textContent('#tc_chart')).includes('Safety (relative score)'));
+  await p.selectOption('#tc_y', 'Health'); await idle(p);
+  ok('compare: choosing the same criterion twice swaps the axes', (await p.inputValue('#tc_x')) !== (await p.inputValue('#tc_y')));
+  ok('compare: details collapsed, no Pareto wording', (await p.$$('#compare_more details:not([open])')).length === 1 && !(await p.textContent('body')).includes('Pareto'));
+  await p.click('text=Use my top 3'); await idle(p);
 
-  // -- Robustness: shares compared with robustness_analysis() in R --
-  await tab('Robustness');
-  await p.waitForSelector('#robust-table');
-  ok('robustness: default run matches R (Delhi first 46%, top 3 65%, 1,000 simulations)',
-     (await p.textContent('#robustness')).includes('stays first in 46% and in your top 3 in 65% of 1,000'));
-  const rrow = await p.$$eval('#robust-table tbody tr', r => r.map(x => [...x.cells].map(c => c.textContent.trim())));
-  ok('robustness: table order and top-3 shares match R (Chandigarh 88%, Kerala 77%, Delhi 65%)', rrow.slice(0, 3).map(r => r[0] + ' ' + r[4]).join('|') === 'Chandigarh 88%|Kerala 77%|Delhi 65%');
-  const delhi = rrow.find(r => r[0] === 'Delhi');
-  ok('robustness: baseline rank and score shown apart from simulated rank (Delhi 1, 0.791, 2 (1-10))', delhi[1] === '1' && delhi[2] === '0.791' && delhi[7] === '2 (1-10)', delhi.join(' / '));
-  ok('robustness: data notes and assumptions shown', (await p.textContent('#robust-table')).includes('Limited data coverage') && (await p.textContent('#robustness')).includes('Data uncertainty is not modelled'));
-  // The shown top-3 shares must agree with the downloaded CSV: "0%" only when
-  // no simulation had the place in the top 3, "100%" only when all did.
-  const sharesMatchCsv = async (label) => {
-    const [dl] = await Promise.all([p.waitForEvent('download'), p.click('#rb_csv')]);
-    const f = `${OUT}/robust-${label.replace(/\W+/g, '-')}.csv`; await dl.saveAs(f);
-    const rows = fs.readFileSync(f, 'utf8').trim().split('\n').map(l => l.split(','));
-    const col = (n) => rows[0].findIndex(h => h.replace(/"/g, '') === n);
-    const share = Object.fromEntries(rows.slice(1).map(r => [r[col('State')].replace(/"/g, ''), +r[col('Top3_Prop')]]));
-    const shown = await p.$$eval('#robust-table tbody tr', r => r.map(x => [x.cells[0].textContent.trim(), x.cells[4].textContent.trim()]));
-    ok(`robustness: shown top-3 shares agree with the CSV, ${label}`,
-       shown.every(([st, v]) => (v === '0%') === (share[st] === 0) && (v === '100%') === (share[st] === 1)),
-       shown.filter(([st]) => share[st] > 0 && share[st] < 0.01).map(x => x.join(' ')).join(', ') || 'no share below 1% shown');
-  };
-  await sharesMatchCsv('default settings');
-  await p.selectOption('#rb_level', 'high'); await p.selectOption('#rb_n', '500'); await p.fill('#rb_seed', '7');
-  await p.click('#rb_run'); await idle(p);
-  ok('robustness: other settings match R (not sure, 500, seed 7: 34% / 49%)', (await p.textContent('#robustness')).includes('stays first in 34% and in your top 3 in 49% of 500'));
-  const [csv] = await Promise.all([p.waitForEvent('download'), p.click('#rb_csv')]);
-  const cp = OUT + '/robust.csv'; await csv.saveAs(cp);
-  ok('robustness: CSV download has all 36 States/UTs', fs.readFileSync(cp, 'utf8').trim().split('\n').length === 37);
-  await sharesMatchCsv('other settings');
+  // -- Stability: compact visual answer, one question --
+  await tab('Stability');
+  const stab = await p.textContent('#stability');
+  ok('stability: label, headline and sentence match R (Close call, Delhi 48%)', stab.includes('Close call') && stab.includes('Delhi stays your #1 in 48% of the answer variations') && stab.includes('can change your #1'));
+  ok('stability: bars for the main places, no tables, caveat once', (await p.$$('#stability .cmp-row')).length === 5 && (await p.$$('#stability table')).length === 0 &&
+     (stab.match(/not the chance that a place is best/g) || []).length === 1);
+  await p.selectOption('#rb_level', 'high'); await idle(p);
+  ok('stability: "Not sure" matches R (38%)', (await p.textContent('#stability')).includes('in 38% of the answer variations'));
+  await p.selectOption('#rb_level', 'medium'); await idle(p);
 
-  // -- What if: compared with run_scenario() in R --
-  await tab('What if');
-  await p.selectOption('#wi_crit', 'Safety'); await idle(p);
-  ok('what-if: the current rating is preselected (Safety 3)', (await p.inputValue('#wi_value')) === '3' && (await p.textContent('#whatif')).includes('Choose a rating different'));
-  await p.selectOption('#wi_value', '5'); await idle(p);
-  const wrow = await p.$$eval('#whatif-table tbody tr', r => r.map(x => [...x.cells].map(c => c.textContent.trim()).join(' ')));
-  ok('what-if: Safety 5 matches R (#1 changes from Delhi to Lakshadweep, up 4)', (await p.textContent('#whatif')).includes('change from Delhi to Lakshadweep') && wrow[0] === '1 Lakshadweep 5 up 4', wrow[0]);
+  // -- What if?: several ratings, before/after, back to the original --
+  await tab('What if?');
+  ok('what if: current ratings preselected and original answers shown', (await p.inputValue('#pref_Safety')) === '3' && (await p.inputValue('#pref_Environment')) === '1' &&
+     (await p.textContent('#whatif_result')).includes('viewing your original answers'));
+  await p.selectOption('#pref_Safety', '5'); await p.selectOption('#pref_Environment', '4');
+  await p.click('text=Show results with these priorities'); await idle(p);
+  const wi = await p.textContent('#whatif_result');
+  ok('what if: two changes give R\'s result (#1 Delhi -> Lakshadweep, before/after lists)', wi.includes('your #1 changes from Delhi to Lakshadweep') && wi.includes('Original top 3') &&
+     wi.includes('With these priorities') && wi.includes('leaves top 3') && wi.includes('Safety now counts 29%'));
+  ok('what if: the header says a what-if is shown', (await p.textContent('#mode_note')).includes('What if:'));
+  ok('what if: the Top 3 tab shows the new results', (await names(p)).join('|') === 'Lakshadweep|Himachal Pradesh|Ladakh');
+  await p.click('.whatif-actions >> text=Back to my original answers'); await idle(p);
+  ok('what if: back to the original answers restores the ranking', (await names(p)).join('|') === 'Delhi|Kerala|Chandigarh' && (await p.inputValue('#pref_Safety')) === '3');
 
-  // -- States & UTs: catalogue, data notes, comparison --
+  // -- States & UTs: catalogue and details with original values --
   await tab('States & UTs');
   const crows = () => p.$$eval('#catalogue-table tbody tr', r => r.length);
   ok('catalogue: 36 States/UTs with ranks from the current ranking', (await crows()) === 36 && (await p.$eval('#catalogue-table tbody tr', r => r.cells[1].textContent.trim())) === 'Delhi');
@@ -129,24 +123,13 @@ const answerAll = async (p, values) => { for (const v of values) { await p.click
   await p.selectOption('#cat_pick', 'Lakshadweep'); await idle(p);
   const det = await p.textContent('#cat_detail');
   ok('catalogue: data notes from the dataset (Lakshadweep: 4 missing, Connectivity estimated, raw values)', det.includes('4 of 17 indicators are missing') && det.includes('estimated: no indicator available') && det.includes('Indicator values (original data)'));
-  await p.evaluate(() => { const z = $('#cmp_pick')[0].selectize; z.addItem('Kerala'); z.addItem('Goa'); }); await idle(p);
-  const tot = await p.$eval('#compare-table tbody tr:last-child', r => r.textContent.replace(/\s+/g, ' '));
-  ok('comparison: match scores and ranks agree with the ranking (Kerala 0.790 rank 2)', tot.includes('0.790 (2)'), tot);
-
-  // -- News: real headlines or an honest unavailable message --
-  await tab('News');
-  await p.waitForFunction(() => !/Loading headlines/.test(document.getElementById('news').textContent), null, { timeout: 40000 });  // off by default
-  const links = await p.$$eval('#news-list a', a => a.map(x => ({ h: x.href, t: x.target, r: x.rel })));
-  const unavailable = /unavailable|off by default/.test(await p.textContent('#news'));
-  ok('news: real headlines with safe external links, or the unavailable message', unavailable || (links.length > 0 && links.length <= 4 && links.every(l => /^https?:\/\//.test(l.h) && l.t === '_blank' && /noopener/.test(l.r))),
-     unavailable ? 'feeds unavailable' : links.length + ' headlines');
 
   // Report.
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('text=Download my report')]);
   const rp = OUT + '/report.html'; await dl.saveAs(rp); const rep = fs.readFileSync(rp, 'utf8');
   ok('report: downloads with the same top 3 and 36 ranking rows', rep.includes('1. Delhi') && rep.includes('2. Kerala') && (rep.match(/<tr>\s*<td>/g) || []).length === 36);
-  ok('report: includes the comparison, the what-if scenario and per-place data notes (no Pareto list)', rep.includes('My comparison') && rep.includes('What-if scenario (hypothetical)') &&
-     rep.includes('Data notes for the places in this report') && !rep.includes('Pareto-efficient places') && /<td>Lakshadweep<\/td>\s*<td>5<\/td>/.test(rep));
+  ok('report: includes the comparison of your top 3 and per-place data notes (no Pareto list)', rep.includes('My comparison') &&
+     rep.includes('Data notes for the places in this report') && !rep.includes('Pareto-efficient places') && rep.includes('Appendix: full ranking'));
 
   // Low-confidence switch.
   await p.click('#result_tabs .nav-link >> text=Top 3'); await idle(p);

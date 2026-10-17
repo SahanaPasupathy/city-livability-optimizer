@@ -1,13 +1,14 @@
 # ==============================================================================
-# Livability Trade-off Atlas: two criteria, one point per State/UT
+# Trade-off explorer: two criteria, one point per State/UT (Compare tab)
 # ------------------------------------------------------------------------------
-# Plain SVG (no extra packages), like the map. Points carry the same data-state /
-# data-tip attributes as the map shapes, so the map's tooltip and selection
-# script (india_map_assets() in R/map.R) works here too and a State/UT selected
-# in one view is selected in the other. Colours are set on the SVG elements
-# themselves (original purple palette) and atlas_assets() adds hover/selection
-# styles, so the chart needs nothing from the app's stylesheet. The class names
-# are kept so a redesign can restyle it with CSS.
+# Plain SVG (no extra packages), like the map. Draws the result of
+# tradeoff_chart_data() (R/view_models.R); nothing is computed here except
+# pixel positions and label placement. Points carry data-state / data-tip like
+# the map shapes, so the map's tooltip script (india_map_assets() in R/map.R)
+# shows their tooltips; `data-click-input` makes a click (or Enter) send the
+# place to that Shiny input instead of selecting it on the map. Colours are set
+# on the SVG elements, so the chart needs no stylesheet; atlas_assets() only
+# adds hover and focus styles. Class names are kept so a redesign can restyle it.
 # ==============================================================================
 
 # Short labels for long names, used only on the chart.
@@ -17,124 +18,138 @@ SHORT_NAMES <- c("Dadra and Nagar Haveli and Daman and Diu" = "DNH & DD",
                  "Madhya Pradesh" = "Madhya P.", "Uttar Pradesh" = "Uttar P.")
 short_name <- function(x) ifelse(x %in% names(SHORT_NAMES), SHORT_NAMES[x], x)
 
-#' Draw the Trade-off Atlas.
-#'
-#' @param X matrix of criterion scores for the States/UTs in the current ranking.
-#' @param results topsis()$results for the same States/UTs (Rank, Closeness).
-#' @param xcrit,ycrit the two criteria to plot (different, both columns of X).
-#' @param low_confidence names of low-confidence States/UTs (dashed outline).
-#' @param selected optional State/UT drawn as selected.
-#' @return htmltools tag: the chart, its legend and a text list for screen readers.
-render_atlas <- function(X, results, xcrit, ycrit, low_confidence = character(0), selected = NULL) {
-  if (identical(xcrit, ycrit)) stop("Choose two different criteria.", call. = FALSE)
-  front <- pareto_front(X, c(xcrit, ycrit))
-  tag <- htmltools::tag
-  W <- 640; H <- 440; L <- 64; R <- 24; Tp <- 26; B <- 54
-  px <- function(v) L + v * (W - L - R)
-  py <- function(v) H - B - v * (H - Tp - B)
-  top_state <- results$State[which.min(results$Rank)]
-  rank_of <- setNames(results$Rank, results$State)
-  n <- nrow(X)
+# Point styles: other places small and soft, your top 3 in the brand colour,
+# selected places larger in amber. Dashed outline = limited or estimated data.
+TC_STYLE <- list(other = list(r = 4.5, fill = "#C7CDF3", stroke = "#ffffff", sw = 1),
+                 top = list(r = 6.5, fill = "#4B3FA8", stroke = "#ffffff", sw = 1.5),
+                 selected = list(r = 8, fill = "#F59E0B", stroke = "#1f2937", sw = 2))
 
-  grid <- lapply(c(0, 0.25, 0.5, 0.75, 1), function(v) {
-    tag("g", list(class = "atlas-grid",
-                  tag("line", list(x1 = px(0), x2 = px(1), y1 = py(v), y2 = py(v), stroke = "#E5E7EB")),
-                  tag("line", list(x1 = px(v), x2 = px(v), y1 = py(0), y2 = py(1), stroke = "#E5E7EB")),
-                  tag("text", list(x = px(0) - 8, y = py(v), class = "atlas-tick atlas-tick-y", `font-size` = 11,
-                                   fill = "#6b7280", `text-anchor` = "end", `dominant-baseline` = "central", format(v))),
-                  tag("text", list(x = px(v), y = py(0) + 18, class = "atlas-tick atlas-tick-x", `font-size` = 11,
-                                   fill = "#6b7280", `text-anchor` = "middle", format(v)))))
-  })
-  axes <- list(
-    tag("text", list(x = px(0.5), y = H - 10, class = "atlas-axis", `font-size` = 12.5, `font-weight` = 600,
-                     fill = "#1f2937", `text-anchor` = "middle", sprintf("%s score \u2192 better", xcrit))),
-    # x = 24 leaves room for the glyphs of the rotated label, also at the larger phone font size.
-    tag("text", list(x = 24, y = py(0.5), class = "atlas-axis", `font-size` = 12.5, `font-weight` = 600,
-                     fill = "#1f2937", `text-anchor` = "middle",
-                     transform = sprintf("rotate(-90 24 %s)", py(0.5)), sprintf("%s score \u2192 better", ycrit))))
-
-  # Frontier as a staircase through the efficient points (left to right).
-  eff <- pareto_frontier_order(X, front)
-  frontier <- if (length(eff) >= 2) {
-    d <- sprintf("M%.1f %.1f", px(X[eff[1], xcrit]), py(X[eff[1], ycrit]))
-    for (k in 2:length(eff)) {
-      d <- paste0(d, sprintf(" H%.1f V%.1f", px(X[eff[k], xcrit]), py(X[eff[k], ycrit])))
+#' Greedy placement of direct labels so they do not overlap (approximate text
+#' boxes). Tries right of the point, then left, then shifted up or down.
+#' @return data.frame(x, y, anchor) in pixels, one row per label.
+place_labels <- function(px, py, text, W, L, R, Tp, B, H) {
+  wbox <- 6.4 * nchar(text) + 4; hbox <- 14
+  placed <- list()
+  overlaps <- function(x0, y0, w) any(vapply(placed, function(b) {
+    !(x0 + w < b[1] || b[1] + b[3] < x0 || y0 + hbox < b[2] || b[2] + hbox < y0)
+  }, logical(1)))
+  out <- data.frame(x = numeric(length(px)), y = numeric(length(px)), anchor = character(length(px)), stringsAsFactors = FALSE)
+  for (i in order(py)) {
+    best <- NULL
+    for (dy in c(0, -14, 14, -28, 28)) {
+      for (side in c("right", "left")) {
+        x0 <- if (side == "right") px[i] + 10 else px[i] - 10 - wbox[i]
+        y0 <- py[i] - 10 + dy
+        if (x0 < L || x0 + wbox[i] > W - 4 || y0 < 2 || y0 + hbox > H - B) next
+        if (!overlaps(x0, y0, wbox[i])) { best <- c(x0, y0, side); break }
+      }
+      if (!is.null(best)) break
     }
-    tag("path", list(d = d, class = "atlas-frontier", fill = "none", stroke = "#4B3FA8", `stroke-width` = 1.5,
-                     `stroke-dasharray` = "4 3", opacity = 0.6))
+    if (is.null(best)) best <- c(px[i] + 10, py[i] - 10, "right")
+    x0 <- as.numeric(best[1]); y0 <- as.numeric(best[2])
+    placed[[length(placed) + 1]] <- c(x0, y0, wbox[i])
+    out[i, ] <- list(if (best[3] == "right") x0 else x0 + wbox[i], y0 + 11, if (best[3] == "right") "start" else "end")
   }
-
-  status <- setNames(front$Status, front$State)
-  pts <- lapply(order(status[rownames(X)] == "efficient"), function(i) {   # efficient drawn last (on top)
-    st <- rownames(X)[i]
-    x <- X[st, xcrit]; y <- X[st, ycrit]
-    if (is.na(x) || is.na(y)) return(NULL)
-    eff_st <- status[[st]] == "efficient"
-    low <- st %in% low_confidence
-    cls <- trimws(paste("ilm-state atlas-pt", if (eff_st) "is-efficient" else "is-dominated",
-                        if (low) "is-low", if (!is.null(selected) && identical(st, selected)) "ilm-selected"))
-    label <- sprintf("%s: %s %.2f, %s %.2f; %s; rank %d of %d%s", st, xcrit, x, ycrit, y,
-                     if (eff_st) "Pareto-efficient on these two" else "dominated on these two",
-                     rank_of[[st]], n, if (low) "; low data confidence" else "")
-    tip <- sprintf(paste0("<div class='ilm-title'>%s</div><div class='ilm-sub'>Rank <b>%d</b> of %d &middot; %s</div>",
-                          "<div class='ilm-row'><span>%s</span><b>%.2f</b></div><div class='ilm-row'><span>%s</span><b>%.2f</b></div>%s"),
-                   htmltools::htmlEscape(st), rank_of[[st]], n,
-                   if (eff_st) "Pareto-efficient" else "dominated", xcrit, x, ycrit, y,
-                   if (low) "<div class='ilm-warn'>&#9888; Low data confidence</div>" else "")
-    tag("circle", list(cx = sprintf("%.1f", px(x)), cy = sprintf("%.1f", py(y)), r = if (eff_st) 6.5 else 5.5,
-                       fill = if (eff_st) "#4B3FA8" else "#ffffff", stroke = if (eff_st) "#ffffff" else "#9CA3AF",
-                       `stroke-width` = 1.5, `stroke-dasharray` = if (low) "2.5 2" else NULL,
-                       class = cls, `data-state` = st, `data-tip` = tip, tabindex = "0", role = "button",
-                       `aria-label` = label))
-  })
-  top_ring <- tag("circle", list(cx = sprintf("%.1f", px(X[top_state, xcrit])),
-                                 cy = sprintf("%.1f", py(X[top_state, ycrit])), r = 11,
-                                 class = "atlas-top", fill = "none", stroke = "#F59E0B", `stroke-width` = 2,
-                                 `pointer-events` = "none", `aria-hidden` = "true"))
-  label_states <- unique(c(eff, top_state, selected))
-  label_states <- label_states[label_states %in% rownames(X)]
-  labels <- lapply(label_states, function(st) {
-    x <- px(X[st, xcrit]); y <- py(X[st, ycrit]); right <- x > W - R - 90
-    # Labels go above the point, or below it when the point is at the top edge.
-    ly <- if (y < Tp + 24) y + 20 else y - 8
-    tag("text", list(x = sprintf("%.1f", x + if (right) -10 else 10), y = sprintf("%.1f", ly),
-                     class = paste("atlas-label", if (right) "is-right"), `aria-hidden` = "true",
-                     `font-size` = 11, `font-weight` = 600, fill = "#1f2937", stroke = "#ffffff", `stroke-width` = 3,
-                     `paint-order` = "stroke", `text-anchor` = if (right) "end" else "start", `pointer-events` = "none",
-                     paste0(short_name(st), if (st == top_state) " \u2605" else "")))
-  })
-
-  svg <- tag("svg", list(viewBox = sprintf("0 0 %d %d", W, H), class = "atlas-svg", role = "group",
-                         `aria-label` = sprintf("Scatter plot of %s against %s for %d States/UTs. Each point can be focused and selected.",
-                                                ycrit, xcrit, n),
-                         grid, axes, frontier, top_ring, tag("g", pts), tag("g", labels)))
-  eff_names <- front$State[which(front$Efficient)]
-  swatch <- function(style, text) {
-    htmltools::tags$span(class = "ilm-key", style = "display:inline-flex;align-items:center;gap:6px;margin-right:14px",
-                         htmltools::tags$span(style = paste0("width:12px;height:12px;border-radius:50%;display:inline-block;", style)),
-                         text)
-  }
-  insufficient <- front$State[front$Status == "insufficient data"]
-  htmltools::tags$div(
-    class = "atlas",
-    svg,
-    htmltools::tags$div(
-      class = "atlas-legend", style = "font-size:13px;color:#4b5563;margin-top:6px",
-      swatch("background:#4B3FA8", "Pareto-efficient"),
-      swatch("background:#fff;border:1.5px solid #9CA3AF", "Dominated"),
-      swatch("border:2px solid #F59E0B", "\u2605 Your #1 match"),
-      swatch("background:#fff;border:1.5px dashed #374151", "Low data confidence")),
-    htmltools::tags$p(class = "note atlas-efficient",
-                      sprintf("Pareto-efficient on %s and %s: %s.", xcrit, ycrit, paste(eff_names, collapse = ", ")),
-                      if (length(insufficient)) sprintf(" Not assessed (missing score): %s.", paste(insufficient, collapse = ", "))))
+  out
 }
 
-#' Hover, focus and selection styles for the Atlas points (include once per
-#' page, next to india_map_assets(), whose script provides the tooltips).
+#' Draw the trade-off explorer chart.
+#'
+#' @param cd result of tradeoff_chart_data().
+#' @param click_input Shiny input that receives the name of a clicked point.
+#' @return htmltools tag: the chart, a legend and a note on places not plotted.
+render_tradeoff_plot <- function(cd, click_input = "cmp_click") {
+  tag <- htmltools::tag
+  W <- 680; H <- 470; L <- 64; R <- 22; Tp <- 30; B <- 58
+  px <- function(v) L + v * (W - L - R)
+  py <- function(v) H - B - v * (H - Tp - B)
+  p <- cd$points
+
+  grid <- lapply(c(0, 0.25, 0.5, 0.75, 1), function(v) {
+    tag("g", list(class = "tc-grid",
+                  tag("line", list(x1 = px(0), x2 = px(1), y1 = py(v), y2 = py(v), stroke = "#EEF0F6")),
+                  tag("line", list(x1 = px(v), x2 = px(v), y1 = py(0), y2 = py(1), stroke = "#EEF0F6")),
+                  tag("text", list(x = px(0) - 8, y = py(v), class = "tc-tick", `font-size` = 11, fill = "#9CA3AF",
+                                   `text-anchor` = "end", `dominant-baseline` = "central", format(v))),
+                  tag("text", list(x = px(v), y = py(0) + 17, class = "tc-tick", `font-size` = 11, fill = "#9CA3AF",
+                                   `text-anchor` = "middle", format(v)))))
+  })
+  axes <- list(
+    tag("line", list(x1 = px(0), x2 = px(1), y1 = py(0), y2 = py(0), stroke = "#9CA3AF")),
+    tag("line", list(x1 = px(0), x2 = px(0), y1 = py(0), y2 = py(1), stroke = "#9CA3AF")),
+    tag("text", list(x = px(0.5), y = H - 14, class = "tc-axis", `font-size` = 13, `font-weight` = 700,
+                     fill = "#1f2937", `text-anchor` = "middle", paste(cd$x_title, "→ better"))),
+    tag("text", list(x = 18, y = py(0.5), class = "tc-axis", `font-size` = 13, `font-weight` = 700,
+                     fill = "#1f2937", `text-anchor` = "middle", transform = sprintf("rotate(-90 18 %s)", py(0.5)),
+                     paste(cd$y_title, "→ better"))),
+    tag("text", list(x = px(1), y = py(1) - 12, class = "tc-corner", `font-size` = 11.5, fill = "#6b7280",
+                     `text-anchor` = "end", "Better on both ↗")))
+
+  kind <- ifelse(p$Selected, "selected", ifelse(p$Top3, "top", "other"))
+  draw_order <- order(match(kind, c("other", "top", "selected")), -p$Rank)
+  pts <- lapply(draw_order, function(i) {
+    s <- TC_STYLE[[kind[i]]]
+    flag <- p$Estimated[i] || p$Partial[i] || p$Limited[i]
+    warn <- c(if (p$Estimated[i]) "Score estimated, not measured" else if (p$Partial[i]) "Some indicators missing",
+              if (p$Limited[i]) "Limited data coverage")
+    tip <- sprintf(paste0("<div class='ilm-title'>%s <em>#%d</em></div><div class='ilm-sub'>Relative match %.2f of %d places</div>",
+                          "<div class='ilm-row'><span>%s</span><b>%.2f</b></div><div class='ilm-row'><span>%s</span><b>%.2f</b></div>%s",
+                          "<div class='ilm-sub'>%s</div>"),
+                   htmltools::htmlEscape(p$State[i]), p$Rank[i], p$Match[i], cd$n_ranked, cd$x, p$X[i], cd$y, p$Y[i],
+                   if (length(warn)) sprintf("<div class='ilm-warn'>&#9888; %s</div>", paste(warn, collapse = "; ")) else "",
+                   if (p$Selected[i]) "Click to remove from your comparison" else "Click to add to your comparison")
+    tag("circle", list(cx = sprintf("%.1f", px(p$X[i])), cy = sprintf("%.1f", py(p$Y[i])), r = s$r,
+                       fill = s$fill, stroke = if (flag) "#374151" else s$stroke, `stroke-width` = s$sw,
+                       `stroke-dasharray` = if (flag) "2.5 2" else NULL,
+                       class = paste("ilm-state tc-pt", paste0("is-", kind[i])), `data-state` = p$State[i],
+                       `data-tip` = tip, `data-click-input` = click_input, tabindex = "0", role = "button",
+                       `aria-pressed` = if (p$Selected[i]) "true" else "false",
+                       `aria-label` = sprintf("%s, rank %d: %s %.2f, %s %.2f%s", p$State[i], p$Rank[i], cd$x, p$X[i], cd$y, p$Y[i],
+                                              if (length(warn)) paste0("; ", paste(warn, collapse = "; ")) else "")))
+  })
+
+  lab <- p[p$Top3 | p$Selected, ]
+  labels <- NULL
+  if (nrow(lab)) {
+    txt <- paste0(lab$Short, ifelse(lab$Top3, sprintf(" #%d", lab$Rank), ""))
+    pos <- place_labels(px(lab$X), py(lab$Y), txt, W, L, R, Tp, B, H)
+    labels <- lapply(seq_len(nrow(lab)), function(i) {
+      tag("text", list(x = sprintf("%.1f", pos$x[i]), y = sprintf("%.1f", pos$y[i]), class = "tc-label",
+                       `font-size` = 11.5, `font-weight` = if (lab$Selected[i]) 800 else 600,
+                       fill = if (lab$Selected[i]) "#92400E" else "#1f2937", stroke = "#ffffff", `stroke-width` = 3,
+                       `paint-order` = "stroke", `text-anchor` = pos$anchor[i], `pointer-events` = "none",
+                       `aria-hidden` = "true", txt[i]))
+    })
+  }
+
+  svg <- tag("svg", list(viewBox = sprintf("0 0 %d %d", W, H), class = "tc-svg", role = "group",
+                         `font-family` = "system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+                         `aria-label` = sprintf("Scatter plot of %s against %s for %d States/UTs. Each point can be focused and selected with Enter.",
+                                                cd$y, cd$x, nrow(p)),
+                         grid, axes, tag("g", pts), tag("g", labels)))
+  swatch <- function(fill, stroke, text, dash = FALSE) {
+    htmltools::tags$span(class = "tc-key",
+                         htmltools::tags$span(style = sprintf("width:12px;height:12px;border-radius:50%%;display:inline-block;background:%s;border:1.5px %s %s",
+                                                              fill, if (dash) "dashed" else "solid", stroke)), text)
+  }
+  htmltools::tags$div(
+    class = "tc-chart",
+    svg,
+    htmltools::tags$div(class = "tc-legend",
+                        swatch(TC_STYLE$top$fill, TC_STYLE$top$fill, "Your top 3"),
+                        swatch(TC_STYLE$selected$fill, TC_STYLE$selected$stroke, "Selected"),
+                        swatch(TC_STYLE$other$fill, TC_STYLE$other$fill, "Other places"),
+                        swatch("#ffffff", "#374151", "Limited or estimated data", dash = TRUE)),
+    if (length(cd$not_plotted)) htmltools::tags$p(class = "note", sprintf("Not plotted (missing score): %s.", paste(cd$not_plotted, collapse = ", "))))
+}
+
+#' Hover, focus and selection styles for the chart (include once per page,
+#' next to india_map_assets(), whose script provides tooltips and clicks).
 atlas_assets <- function() {
   htmltools::tags$style(htmltools::HTML(paste0(
-    ".atlas-svg{width:100%;max-width:640px;height:auto;display:block;margin:0 auto}",
-    ".atlas .atlas-pt{cursor:pointer}",
-    ".atlas .ilm-hover,.atlas .atlas-pt:focus{stroke:#111827 !important;stroke-width:2.4px !important;outline:none}",
-    ".atlas .ilm-selected{stroke:#111827 !important;stroke-width:3px !important;stroke-dasharray:none !important}")))
+    ".tc-svg{width:100%;max-width:680px;height:auto;display:block;margin:0 auto}",
+    ".tc-chart .tc-pt{cursor:pointer;transition:r .12s}",
+    ".tc-chart .ilm-hover,.tc-chart .tc-pt:focus{stroke:#111827 !important;stroke-width:2.4px !important;outline:none}",
+    ".tc-legend{display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;font-size:12.5px;color:#4b5563;margin-top:4px}",
+    ".tc-key{display:inline-flex;align-items:center;gap:6px}")))
 }

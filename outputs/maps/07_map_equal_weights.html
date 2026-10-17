@@ -53,11 +53,16 @@
   document.addEventListener('mouseout',function(e){var t=target(e);if(!t)return;
     tipEl().style.display='none';
     same(t.getAttribute('data-state'),function(n){n.classList.remove('ilm-hover');});});
-  document.addEventListener('click',function(e){var t=target(e);if(!t)return;
-    var name=t.getAttribute('data-state');
-    document.querySelectorAll('.ilm-selected').forEach(function(n){n.classList.remove('ilm-selected');});
-    same(name,function(n){n.classList.add('ilm-selected');});
-    if(window.Shiny&&Shiny.setInputValue){Shiny.setInputValue('map_selected',name,{priority:'event'});}});
+  function choose(t){var name=t.getAttribute('data-state');
+    var inp=t.getAttribute('data-click-input');
+    if(inp){if(window.Shiny&&Shiny.setInputValue){Shiny.setInputValue(inp,name,{priority:'event'});}return;}
+    document.querySelectorAll('.ilm-map .ilm-selected').forEach(function(n){n.classList.remove('ilm-selected');});
+    same(name,function(n){if(n.closest('.ilm-map'))n.classList.add('ilm-selected');});
+    if(window.Shiny&&Shiny.setInputValue){Shiny.setInputValue('map_selected',name,{priority:'event'});}}
+  document.addEventListener('click',function(e){var t=target(e);if(t)choose(t);});
+  // Points with data-click-input (the trade-off chart) are buttons: Enter or Space selects them.
+  document.addEventListener('keydown',function(e){var t=target(e);
+    if(t&&t.getAttribute('data-click-input')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();choose(t);}});
 })();
 </script>
 </head>

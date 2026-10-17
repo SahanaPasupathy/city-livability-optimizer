@@ -71,14 +71,7 @@ recommendation_view <- function(answers, X, d, meta, low_conf = character(0), ex
   cs <- coverage_summary(d, meta)
   ct <- coverage_table(d, meta)
   stab <- stability_check(answers, X, low_conf, exclude_low, k)
-  reasons <- setNames(lapply(top$State, function(st) {
-    pb <- priority_breakdown(rec$topsis, w, st, 3)
-    ev <- indicator_evidence(d, meta, st)
-    pb$Label <- criterion_label(pb$Criterion)
-    pb$Support <- ct$Support[match(paste(st, pb$Criterion), paste(ct$State, ct$Criterion))]
-    pb$Evidence <- vapply(pb$Criterion, function(cn) paste(ev$Evidence[ev$Criterion == cn], collapse = "; "), "")
-    pb[c("Criterion", "Label", "Weight", "Score", "Position", "Verdict", "Support", "Sentence", "Evidence")]
-  }), top$State)
+  reasons <- setNames(lapply(top$State, function(st) place_reasons(rec, d, meta, st, 3)), top$State)
   shortlist <- data.frame(
     Rank = top$Rank, State = top$State, Type = d$Type[match(top$State, d$State)],
     Relative_Match = round(top$Closeness, 2),
@@ -95,6 +88,20 @@ recommendation_view <- function(answers, X, d, meta, low_conf = character(0), ex
        compromise = setNames(vapply(top$State, function(st) shortfall_sentence(rec$topsis, w, st), ""), top$State),
        stability = stab, alternative_without_limited = alt,
        excluded = rec$excluded, n_ranked = nrow(rec$X), notes = c(MATCH_NOTE, SCOPE_NOTE))
+}
+
+#' Reasons for one ranked place: its position on the user's k most important
+#' criteria, with coverage and the indicator evidence behind each.
+#' @return data.frame(Criterion, Label, Weight, Score, Position, Verdict,
+#'   Support, Sentence, Evidence).
+place_reasons <- function(rec, d, meta, state, k = 3) {
+  pb <- priority_breakdown(rec$topsis, rec$ahp$weights, state, k)
+  ev <- indicator_evidence(d, meta, state)
+  ct <- coverage_table(d, meta)
+  pb$Label <- criterion_label(pb$Criterion)
+  pb$Support <- ct$Support[match(paste(state, pb$Criterion), paste(ct$State, ct$Criterion))]
+  pb$Evidence <- vapply(pb$Criterion, function(cn) paste(ev$Evidence[ev$Criterion == cn], collapse = "; "), "")
+  pb[c("Criterion", "Label", "Weight", "Score", "Position", "Verdict", "Support", "Sentence", "Evidence")]
 }
 
 #' Plain-language trade-off sentences between two places.
@@ -320,12 +327,17 @@ robustness_view <- function(rb, top_n = 10) {
               else sprintf("Random seed %s gives the same numbers every time.", format(st$seed, scientific = FALSE))
   list(top_state = rb$baseline$state, top1_share = format_share(rb$baseline$top1_prop),
        top3_share = format_share(rb$baseline$top3_prop), n_text = n_txt,
-       headline = sprintf("Your #1, %s, stays first in %s and in your top 3 in %s of %s simulations.",
-                          rb$baseline$state, format_share(rb$baseline$top1_prop), format_share(rb$baseline$top3_prop), n_txt),
+       headline = if (isTRUE(st$exact)) {
+         sprintf("Across all combinations of one-point changes to your answers (weighted by how likely each is), your #1, %s, stays first in %s of cases and in your top 3 in %s.",
+                 rb$baseline$state, format_share(rb$baseline$top1_prop), format_share(rb$baseline$top3_prop))
+       } else {
+         sprintf("Your #1, %s, stays first in %s and in your top 3 in %s of %s simulations.",
+                 rb$baseline$state, format_share(rb$baseline$top1_prop), format_share(rb$baseline$top3_prop), n_txt)
+       },
        competitive = if (nrow(rb$competitive) > 0) paste0("Also often in your top 3: ", paste(sprintf("%s (%s)", rb$competitive$State,
                                                           format_share(rb$competitive$Top3_Prop)), collapse = ", "), ".") else "",
        table = table,
-       table_note = "\"Your rank\" and \"Match score\" are your actual results. The other columns are simulated. Rows are sorted by top-3 share, then by your rank.",
+       table_note = "\"Your rank\" and \"Match score\" are your actual results. The other columns come from the re-ranked variations. Rows are sorted by top-3 share, then by your rank.",
        influence = influence,
        assumption = sprintf("Assumption: in each simulation %s. %s", assumption, seed_txt),
        interpretation = "The shares say how often each place stays near the top under these assumptions; they are not probabilities that a place is the best place to live.",
@@ -399,4 +411,285 @@ about_view <- function() {
   list(scope = SCOPE_NOTE, match_note = MATCH_NOTE, criteria = CRITERION_INFO, method = METHOD_STEPS,
        limitations = LIMITATIONS, data_notes = DATA_NOTES, stability_notes = STABILITY_NOTES,
        before_you_move = BEFORE_YOU_MOVE)
+}
+
+# ------------------------------------------------------------------------------
+# Compact view models for the main screens (What if, Stability, Compare, Top 3)
+# ------------------------------------------------------------------------------
+
+# Display conventions (not statistical tests): two relative scores closer than
+# NEAR_TIE_SCORE on the 0-1 scale are shown as "about the same"; two overall
+# matches closer than NEAR_TIE_MATCH are shown as "nearly tied".
+NEAR_TIE_SCORE <- 0.05
+NEAR_TIE_MATCH <- 0.02
+STABILITY_CAVEAT <- "This shows how sensitive your result is to your own answers. It is not the chance that a place is best for you."
+
+#' One short data-coverage badge for a place ("" when every indicator is there),
+#' e.g. "Data gaps: Connectivity estimated; Health, Housing partial".
+coverage_badge <- function(d, meta, state) {
+  cs <- coverage_summary(d, meta)
+  r <- cs[cs$State == state, ]
+  if (!nrow(r) || !nzchar(r$Note)) return("")
+  parts <- c(if (nzchar(r$Imputed)) paste(r$Imputed, "estimated"),
+             if (nzchar(r$Thin)) paste(r$Thin, "based on few indicators"),
+             if (nzchar(r$Partial)) paste(r$Partial, "partial"))
+  paste0(if (isTRUE(r$Limited_Coverage)) "Limited data: " else "Data gaps: ", paste(parts, collapse = "; "))
+}
+
+# Rank movement as a short arrow label (ASCII-safe escapes).
+move_label <- function(before, after) {
+  ifelse(is.na(before), "new",
+         ifelse(after < before, sprintf("▲ %d", before - after),
+                ifelse(after > before, sprintf("▼ %d", after - before), "same")))
+}
+
+#' What-if view model: the user's original answers (baseline) against a set of
+#' alternative answers, ranked by the same engine with the same exclusion rule.
+#'
+#' @param baseline named 1-5 original answers.
+#' @param answers named 1-5 alternative answers (any number of them changed).
+#' @param X,low_conf,exclude_low as in compute_recommendation().
+#' @return list(unchanged, changed = data.frame(Criterion, From, To, Weight_Before,
+#'   Weight_After), before = data.frame(Rank, State, Status) for the original
+#'   top k ("stays" / "leaves"), after = data.frame(Rank, State, Was, Move,
+#'   New) for the new top k, moves (all places in either list: State, Before,
+#'   After, Move), entered, left, new_top, summary (one sentence),
+#'   explanation (character, grounded in the weights and the scores)).
+whatif_view <- function(baseline, answers, X, low_conf = character(0), exclude_low = FALSE, k = 3) {
+  a <- setNames(suppressWarnings(as.integer(answers[CRITERIA])), CRITERIA)
+  if (length(answers) != length(CRITERIA) || anyNA(a) || any(a < 1 | a > 5)) {
+    stop("Each rating must be a whole number from 1 to 5 for all seven criteria.", call. = FALSE)
+  }
+  sv <- scenario_view(baseline, a, X, low_conf, exclude_low, k)
+  sc <- sv$scenario
+  rb <- sc$base$topsis$results; ra <- sc$scenario$topsis$results
+  tb <- sv$top_before; ta <- sv$top_after
+  before <- data.frame(Rank = rb$Rank[match(tb, rb$State)], State = tb,
+                       Status = ifelse(tb %in% ta, "stays", "leaves"), stringsAsFactors = FALSE)
+  was <- rb$Rank[match(ta, rb$State)]
+  after <- data.frame(Rank = ra$Rank[match(ta, ra$State)], State = ta, Was = was,
+                      Move = move_label(was, ra$Rank[match(ta, ra$State)]), New = !ta %in% tb,
+                      stringsAsFactors = FALSE)
+  moves <- sv$moves
+  moves$Move <- move_label(moves$Before, moves$After)
+  if (nrow(sv$changed) == 0) {
+    return(list(unchanged = TRUE, changed = sv$changed, before = before, after = after, moves = moves,
+                entered = character(0), left = character(0), new_top = FALSE,
+                summary = "These are your original answers. Change at least one rating to test a different set of priorities.",
+                explanation = character(0)))
+  }
+  wb <- sc$base$ahp$weights[CRITERIA]; wa <- sc$scenario$ahp$weights[CRITERIA]
+  S <- sc$scenario$X
+  expl <- sprintf("%s now counts %.0f%% of your result (was %.0f%%).", sv$changed$Criterion,
+                  100 * sv$changed$Weight_After, 100 * sv$changed$Weight_Before)
+  # Why a place moved ahead: the criterion where the weight shift helped it most
+  # against the place it overtook (weight change x score difference).
+  driver <- function(winner, loser) {
+    if (!all(c(winner, loser) %in% rownames(S))) return(character(0))
+    gain <- (wa - wb) * (S[winner, ] - S[loser, ])
+    cn <- names(which.max(gain))
+    if (gain[cn] <= 0) return(character(0))
+    sprintf("%s moves ahead of %s mainly because %s counts %s now, and it scores %.2f there against %.2f.",
+            winner, loser, cn, if (wa[cn] > wb[cn]) "more" else "less", S[winner, cn], S[loser, cn])
+  }
+  if (sv$new_top) {
+    expl <- c(expl, driver(ta[1], tb[1]))
+  } else if (length(sv$entered)) {
+    expl <- c(expl, driver(sv$entered[1], sv$left[1]))
+  }
+  summary <- if (sv$new_top) sprintf("With these priorities your #1 changes from %s to %s.", tb[1], ta[1])
+             else if (length(sv$entered)) sprintf("Your #1 stays %s; %s enter%s your top %d.", tb[1],
+                                                 paste(sv$entered, collapse = " and "), if (length(sv$entered) == 1) "s" else "", k)
+             else if (!identical(ta, tb)) sprintf("Same top %d, in a different order.", k)
+             else sprintf("Your top %d does not change.", k)
+  list(unchanged = FALSE, changed = sv$changed, before = before, after = after, moves = moves,
+       entered = sv$entered, left = sv$left, new_top = sv$new_top, summary = summary, explanation = expl)
+}
+
+#' Stability summary for the main screen: one label, one headline, a bar per
+#' place and one sentence, built on the existing engines (stability_check()
+#' and robustness_analysis(exact = TRUE): every combination of one-point
+#' answer changes, weighted by `p_change`; deterministic, no seed).
+#'
+#' Labels (display conventions on the #1's share of variations):
+#'   "Holds up" >= 0.9, "Usually holds" >= 0.5, "Close call" < 0.5.
+#' @return list(top_state, label, label_class ("strong"/"moderate"/"short"),
+#'   top1_share, headline, sentence, places = data.frame(State, Rank,
+#'   First_Share, Top3_Share, First_Label, Top3_Label, Badge), caveat, explain,
+#'   check = stability_check() result).
+stability_summary_view <- function(answers, X, d, meta, low_conf = character(0), exclude_low = FALSE,
+                                   p_change = 0.25, max_places = 5) {
+  chk <- stability_check(answers, X, low_conf, exclude_low, 3)
+  rec <- compute_recommendation(answers, X, low_conf, exclude_low)
+  rb <- robustness_analysis(rec$X, answers = answers, preference = "ratings", exact = TRUE, p_change = p_change)
+  rv <- robustness_view(rb)
+  s <- rb$summary
+  top <- rb$baseline$state
+  share <- rb$baseline$top1_prop
+  label <- if (share >= 0.9) "Holds up" else if (share >= 0.5) "Usually holds" else "Close call"
+  cls <- c("Holds up" = "strong", "Usually holds" = "moderate", "Close call" = "short")[[label]]
+  show <- unique(c(chk$shortlist$State, chk$also_consider$State, rb$competitive$State))
+  show <- utils::head(show[order(s$Base_Rank[match(show, s$State)], show)], max_places)   # your rank order
+  places <- data.frame(State = show, Rank = s$Base_Rank[match(show, s$State)],
+                       First_Share = s$Top1_Prop[match(show, s$State)], Top3_Share = s$Top3_Prop[match(show, s$State)],
+                       stringsAsFactors = FALSE)
+  places$First_Label <- format_share(places$First_Share)
+  places$Top3_Label <- format_share(places$Top3_Share)
+  places$Badge <- vapply(places$State, function(st) coverage_badge(d, meta, st), "", USE.NAMES = FALSE)
+  sentence <- if (chk$top1_kept == chk$n_variants && !chk$close_call) {
+    "Small changes to your answers do not change your top 3."
+  } else if (chk$top1_kept == chk$n_variants) {
+    sprintf("Small changes to your answers keep %s first, but can reorder the rest of your top 3.", top)
+  } else {
+    "Small changes to your answers can change your #1, so compare the places below before deciding."
+  }
+  list(top_state = top, label = label, label_class = cls, top1_share = share,
+       headline = sprintf("%s stays your #1 in %s of the answer variations we tested.", top, rv$top1_share),
+       sentence = sentence, places = places, caveat = STABILITY_CAVEAT,
+       explain = c("We re-ranked your results with every combination of one-point changes to your seven answers, using the same method and the same places.",
+                   sprintf("\"How sure are you?\" sets how likely each change is (%s chance per answer).", format_share(p_change)),
+                   "The bars show how often each place came first, and how often it stayed in your top 3, across those variations."),
+       check = chk)
+}
+
+#' Comparison bars for two or three places: one row per criterion (ordered by
+#' the user's weight) with each place's relative score, the clear leader (if
+#' any) and coverage flags, plus up to two plain observations.
+#' @return list(places = comparison_view()$places, bars = data.frame(Criterion,
+#'   Weight, Percent, State, Score, Position, Flag, Leads, Tie), observations,
+#'   badges = named character (coverage_badge per place), indicators =
+#'   comparison_view()$indicators (for an optional detail view), n_ranked).
+comparison_bars_view <- function(rec, states, d, meta, low_conf = character(0)) {
+  cv <- comparison_view(rec, states, d, meta, low_conf)
+  cr <- cv$criteria
+  flag <- c(full = "", partial = "some data missing", thin = "few indicators", imputed = "estimated, not measured")
+  cr$Flag <- unname(flag[cr$Support])
+  cr$Percent <- sprintf("%.0f%%", 100 * cr$Weight)
+  rng <- tapply(cr$Score, cr$Criterion, function(x) max(x) - min(x))
+  cr$Tie <- unname(rng[cr$Criterion] < NEAR_TIE_SCORE)
+  cr$Leads <- vapply(seq_len(nrow(cr)), function(i) {
+    x <- cr$Score[cr$Criterion == cr$Criterion[i]]
+    !cr$Tie[i] && cr$Score[i] == max(x) && sum(x == max(x)) == 1 && max(x) - max(x[x < max(x)], -Inf) >= NEAR_TIE_SCORE
+  }, logical(1))
+  bars <- cr[c("Criterion", "Weight", "Percent", "State", "Score", "Position", "Flag", "Leads", "Tie")]
+  obs <- character(0)
+  if (length(unique(states)) >= 2) {
+    w <- tapply(cr$Weight, cr$Criterion, `[`, 1)
+    imp <- names(which.max(w * rng[names(w)]))
+    if (rng[imp] < NEAR_TIE_SCORE) {
+      obs <- c(obs, "On the criteria that matter most to you, these places are about the same.")
+    } else {
+      lead <- cr$State[cr$Criterion == imp][which.max(cr$Score[cr$Criterion == imp])]
+      obs <- c(obs, sprintf("The biggest difference for your priorities is %s (%s of your result): %s is clearly ahead.",
+                            imp, sprintf("%.0f%%", 100 * w[[imp]]), lead))
+    }
+    pl <- cv$places[cv$places$In_Ranking, ]
+    pl <- pl[order(pl$Rank), ]
+    res <- rec$topsis$results
+    if (nrow(pl) >= 2) {
+      gap <- abs(diff(res$Closeness[match(pl$State[1:2], res$State)]))
+      obs <- c(obs, if (gap < NEAR_TIE_MATCH) sprintf("%s and %s are nearly tied overall for your priorities.", pl$State[1], pl$State[2])
+                    else sprintf("Overall, %s matches your priorities best of these (rank %d of %d).", pl$State[1], pl$Rank[1], nrow(rec$X)))
+    }
+  }
+  list(places = cv$places, bars = bars, observations = obs,
+       badges = setNames(vapply(cv$places$State, function(st) coverage_badge(d, meta, st), ""), cv$places$State),
+       indicators = cv$indicators, n_ranked = nrow(rec$X))
+}
+
+#' Chart data for the two-criterion trade-off explorer (Compare).
+#'
+#' One point per place in the current ranking (`rec$X`, so the exclusion rule
+#' applies), placed at its relative scores on two criteria. Built on
+#' tradeoff_view() (which uses pareto_front()) and the data-quality functions;
+#' no new scoring. Places with a missing score on either axis are listed in
+#' `not_plotted` and never drawn at zero.
+#'
+#' @param rec compute_recommendation() result.
+#' @param x,y two different criteria (horizontal, vertical).
+#' @param d,meta dataset and metadata (coverage warnings).
+#' @param selected places the user selected (any order; at most three are used).
+#' @param low_conf limited-coverage places.
+#' @return list(x, y, x_title, y_title, n_ranked, points = data.frame(State,
+#'   Short, X, Y, Rank, Match, Top3, Selected, Frontier, Support_X, Support_Y,
+#'   Estimated, Partial, Limited), cards = data.frame(State, Rank, Match,
+#'   Score_X, Score_Y, Pos_X, Pos_Y, Observation, Warning) in selection order,
+#'   selected, excluded_selected, not_plotted, note).
+tradeoff_chart_data <- function(rec, x, y, d, meta, selected = character(0), low_conf = character(0)) {
+  if (length(x) != 1 || length(y) != 1 || !all(c(x, y) %in% CRITERIA)) stop("Choose two criteria.", call. = FALSE)
+  if (identical(x, y)) stop("Choose two different criteria.", call. = FALSE)
+  Xr <- rec$X
+  res <- rec$topsis$results
+  n <- nrow(Xr)
+  ok <- stats::complete.cases(Xr[, c(x, y), drop = FALSE])
+  tv <- tradeoff_view(list(X = Xr[ok, , drop = FALSE],
+                           topsis = list(results = res[res$State %in% rownames(Xr)[ok], ])), x, y)
+  ct <- coverage_table(d, meta)
+  sup <- function(st, cn) ct$Support[match(paste(st, cn), paste(ct$State, ct$Criterion))]
+  selected <- unique(as.character(selected))
+  selected <- selected[selected %in% d$State]
+  excluded_selected <- setdiff(selected, rownames(Xr))
+  st <- rownames(Xr)[ok]
+  # Cards only for places that can be drawn (a missing axis score is listed in
+  # not_plotted instead of showing "NA").
+  selected <- utils::head(intersect(selected, st), 3)
+  pts <- data.frame(State = st, Short = unname(short_name(st)), X = unname(Xr[st, x]), Y = unname(Xr[st, y]),
+                    Rank = res$Rank[match(st, res$State)], Match = round(res$Closeness[match(st, res$State)], 2),
+                    stringsAsFactors = FALSE)
+  pts$Top3 <- pts$Rank <= 3
+  pts$Selected <- pts$State %in% selected
+  pts$Frontier <- pts$State %in% tv$frontier$State
+  pts$Support_X <- sup(st, x); pts$Support_Y <- sup(st, y)
+  pts$Estimated <- pts$Support_X == "imputed" | pts$Support_Y == "imputed"
+  pts$Partial <- pts$Support_X %in% c("partial", "thin") | pts$Support_Y %in% c("partial", "thin")
+  pts$Limited <- pts$State %in% low_conf
+  posx <- rank(-Xr[, x], ties.method = "min"); posy <- rank(-Xr[, y], ties.method = "min")
+  observe1 <- function(s) {
+    px <- unname(posx[s]); py <- unname(posy[s])
+    gx <- position_group(px, n); gy <- position_group(py, n)
+    first <- if (gx == "Top third" && gy == "Top third") sprintf("In the top third on both %s and %s.", x, y)
+    else if (setequal(c(gx, gy), c("Top third", "Bottom third"))) {
+      strong <- if (gx == "Top third") x else y; weak <- if (gx == "Top third") y else x
+      sprintf("A clear trade-off: strong on %s (%s) but weak on %s (%s).", strong, ordinal(if (strong == x) px else py),
+              weak, ordinal(if (weak == x) px else py))
+    } else if (px < py) sprintf("Stronger on %s (%s) than on %s (%s).", x, ordinal(px), y, ordinal(py))
+    else if (py < px) sprintf("Stronger on %s (%s) than on %s (%s).", y, ordinal(py), x, ordinal(px))
+    else sprintf("Same position on %s and %s (%s).", x, y, ordinal(px))
+    if (s %in% tv$frontier$State) paste(first, sprintf("No other place scores at least as well on both."))
+    else first
+  }
+  warn1 <- function(s) {
+    w <- c(vapply(c(x, y), function(cn) switch(sup(s, cn), imputed = sprintf("%s score is estimated, not measured.", cn),
+                                                 thin = sprintf("%s is based on few indicators.", cn),
+                                                 partial = sprintf("%s is based on only some of its indicators.", cn), ""), ""))
+    w <- w[nzchar(w)]
+    if (length(w)) paste(w, collapse = " ") else if (s %in% low_conf) coverage_badge(d, meta, s) else ""
+  }
+  cards <- data.frame(State = selected, Rank = res$Rank[match(selected, res$State)],
+                      Match = round(res$Closeness[match(selected, res$State)], 2),
+                      Score_X = unname(Xr[selected, x]), Score_Y = unname(Xr[selected, y]),
+                      Pos_X = unname(posx[selected]), Pos_Y = unname(posy[selected]),
+                      Observation = vapply(selected, observe1, "", USE.NAMES = FALSE),
+                      Warning = vapply(selected, warn1, "", USE.NAMES = FALSE), stringsAsFactors = FALSE)
+  list(x = x, y = y, x_title = sprintf("%s (relative score)", x), y_title = sprintf("%s (relative score)", y),
+       n_ranked = n, points = pts, cards = cards, selected = selected, excluded_selected = excluded_selected,
+       not_plotted = rownames(Xr)[!ok],
+       note = sprintf("Scores run from 0 to 1 among the %d places ranked (higher is better on both axes); they are relative model scores, not original measurements.", n))
+}
+
+#' Toggle a clicked place in the comparison selection (at most `max_n`; adding
+#' one more drops the earliest). Unknown names leave the selection unchanged.
+toggle_place <- function(current, clicked, valid, max_n = 3) {
+  current <- intersect(as.character(current), valid)
+  if (length(clicked) != 1 || is.na(clicked) || !clicked %in% valid) return(current)
+  if (clicked %in% current) setdiff(current, clicked) else utils::tail(c(current, clicked), max_n)
+}
+
+#' Keep the two axes different: when the user picks the other axis's
+#' criterion, the axes swap (using the previous pair); returns the pair to use.
+resolve_axes <- function(x, y, previous = NULL) {
+  if (!identical(x, y)) return(c(x, y))
+  if (!is.null(previous) && !identical(previous[1], x)) return(c(x, previous[1]))   # x changed: swap
+  if (!is.null(previous)) return(c(previous[2], y))                                 # y changed: swap
+  c(x, setdiff(CRITERIA, x)[1])
 }
